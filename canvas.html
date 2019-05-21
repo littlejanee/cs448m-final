@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+     body { margin: 20px; }
+     canvas { border: 1px solid black; }
+    </style>
+  </head>
+  <body>
+    <canvas width="500" height="500" id="canvas"></canvas>
+    <script>
+     let ws = new WebSocket('ws://localhost:9001/');
+     let send = (msg) => {
+       ws.send(JSON.stringify(msg));
+     };
+
+     let canvas = document.getElementById('canvas');
+     let ctx = canvas.getContext('2d');
+
+     let xy = (e) => {
+       let x = e.clientX - canvas.offsetLeft;
+       let y = e.clientY - canvas.offsetTop;
+       return [x, y];
+     };
+
+     let down = false;
+
+     canvas.addEventListener('mousemove', (e) => {
+       if (down) {
+         let [x, y] = xy(e);
+         ctx.lineTo(x, y);
+         ctx.stroke();
+         send({'x': x, 'y': y});
+       }
+     });
+
+     canvas.addEventListener('mousedown', (e) => {
+       down = true;
+       let [x, y] = xy(e);
+       ctx.beginPath();
+       ctx.strokeStyle = 'black';
+       ctx.lineWidth = 2;
+       ctx.moveTo(x, y);
+     });
+
+     canvas.addEventListener('mouseup', (e) => {
+       down = false;
+       ctx.closePath();
+     });
+    </script>
+  </body>
+</html>
