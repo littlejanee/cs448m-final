@@ -30,7 +30,7 @@
          let [x, y] = xy(e);
          ctx.lineTo(x, y);
          ctx.stroke();
-         send({'x': x, 'y': y});
+         send({'type': 'move', 'x': x, 'y': y});
        }
      });
 
@@ -41,11 +41,14 @@
        ctx.strokeStyle = 'black';
        ctx.lineWidth = 2;
        ctx.moveTo(x, y);
+       send({'type': 'start', 'x': x, 'y': y});
      });
 
      canvas.addEventListener('mouseup', (e) => {
        down = false;
+       let [x, y] = xy(e);
        ctx.closePath();
+       send({'type': 'end', 'x': x, 'y': y});
      });
     </script>
   </body>
