@@ -17,7 +17,7 @@ def recv(client, server, message):
     x, y = data['x'], data['y']
     x = x * target_width / client_width
     y = y * target_height / client_height
-    p.move(x, y)
+    p.move(target_width - x, y)
         
 
 server.set_fn_message_received(recv)
