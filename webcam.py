@@ -1,9 +1,11 @@
 import cv2
-from skimage import measure
 import numpy as np
-from scipy import stats
+import sys
+
+DEBUG = True
 
 fgbg = cv2.createBackgroundSubtractorMOG2()
+
 
 def find_marker(frame):
     fgmask = fgbg.apply(frame)
@@ -28,6 +30,7 @@ def find_marker(frame):
 
     return None
 
+
 class History:
     def __init__(self, n=10):
         self.pts = []
@@ -41,24 +44,32 @@ class History:
     def last(self):
         return self.pts[-1] if len(self.pts) > 0 else None
 
-def main():
-    cam = cv2.VideoCapture(1)
-    drawn = np.zeros((1080, 1920))
+
+def main(cam_idx):
+    cam = cv2.VideoCapture(cam_idx)
+    result, frame = cam.read()
+    assert result
+
+    canvas = np.zeros(frame.shape)
     history = History()
 
     while True:
         result, frame = cam.read()
-        if not result:
-            raise Exception("Cam read failed")
+        assert result
 
         point = find_marker(frame)
         if point is not None:
-            if history.last() is not None:
-                cv2.line(drawn, history.last(), point, (255, 255, 255), 3)
-            history.shift(point)
 
-        cv2.imshow('frame', drawn)
-        cv2.waitKey(30)
+            if DEBUG:
+                if history.last() is not None:
+                    cv2.line(canvas, history.last(), point, (255, 255, 255), 3)
+                history.shift(point)
+
+        if DEBUG:
+            cv2.imshow('frame', canvas)
+            cv2.waitKey(30)
+
 
 if __name__ == "__main__":
-    main()
+    cam_idx = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+    main(cam_idx)
