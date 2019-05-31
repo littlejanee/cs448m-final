@@ -1,23 +1,41 @@
 from websocket_server import WebsocketServer
 import json
-from plotter import Plotter
+# from plotter import Plotter
+from plotteraxi import PlotterAxi
 
 server = WebsocketServer(9001)
-p = Plotter()
+# p = Plotter()
+p = PlotterAxi()
 
-client_width = 500
-client_height = 500
+client_width = 1100
+client_height = 850
 
-target_width = 150
-target_height = 150
+target_width = 11.0 #150
+target_height = 8.5 #150
+
+border = .2
 
 
 def recv(client, server, message):
     data = json.loads(message)
-    x, y, ty = data['x'], data['y'], data['type']
-    x = x * target_width / client_width
-    x = target_width - x - target_width / 2
-    y = y * target_height / client_height - target_height / 2
+    x0, y0, ty = data['x'], data['y'], data['type']
+
+    x = x0 * target_width / client_width
+    y = y0 * target_height / client_height
+
+    print '(%f, %f)' % (x, y)
+
+    x_border = x0 * (target_width - border) / client_width + border / 2
+    y_border = y0 * (target_height - border) / client_height + border / 2
+
+    print 'border: (%f, %f)' % (x_border, y_border)
+
+    x = x_border
+    y = y_border
+    
+    # print y
+    # x = target_width - x - target_width / 2.0
+    # y = y * target_height / client_height - target_height / 2.0
     if ty == 'start':
         p.sprint(x, y)
         p.down()
