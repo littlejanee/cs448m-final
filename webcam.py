@@ -12,15 +12,15 @@ from threading import Thread, Lock
 import subprocess as sp
 
 
-DRY_RUN = False
+DRY_RUN = True
 
-client_width = 1920
+client_width = 1800#1920
 client_height = 1080
 
 target_width = 11.0
 target_height = 8.5
 
-border = 1
+border = 1.5
 
 fgbg = cv2.createBackgroundSubtractorMOG2()
 
@@ -105,7 +105,9 @@ def main(cam_idx):
 
         def send_commands():
             while True:
-                path = [path_buffer.get() for _ in range(3)]
+                path = [path_buffer.get() for _ in range(9)]
+                if path_buffer.qsize() > 4:
+                    path = path[::3]
                 with device_lock:
                     p.path(path)
 
@@ -140,6 +142,7 @@ def main(cam_idx):
         canvas[frame_height:, frame_width:, :] = np.expand_dims(sat_img, axis=2)
 
         if point is not None:
+            point = (point[0], client_height - point[1])
             (x, y) = drawing.computedrawcoordinates(point[0], point[1])
 
             path_buffer.put((x, y))
@@ -171,7 +174,11 @@ def main(cam_idx):
             raw_history.shift(point)
             draw_history.shift((x, y))
 
-        cv2.imshow('frame', canvas)
+        camera_canvas = canvas[:, frame_width:, :]
+        # cv2.line(camera_canvas, (client_width, 0), (client_width, frame_height), (255, 255, 0), 3)
+
+        canvas_resize = cv2.resize(canvas, (1920, 1080))
+        cv2.imshow('frame', canvas_resize)
         cv2.waitKey(30)
 
 if __name__ == "__main__":
