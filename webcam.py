@@ -12,10 +12,13 @@ from threading import Thread, Lock
 import subprocess as sp
 
 
-DRY_RUN = True
+DRY_RUN = False
 
-client_width = 1800#1920
-client_height = 1080
+client_width = 1350#1920
+client_x = int(1920 / 2 - client_width / 2)
+
+client_height = 1000
+client_y  = int(1080 / 2 - client_height / 2)
 
 target_width = 11.0
 target_height = 8.5
@@ -136,46 +139,62 @@ def main(cam_idx):
     while True:
         result, frame = cam.read()
         assert result
-        canvas[:frame_height, frame_width:, :] = frame
+        canvas[:frame_height, frame_width:, :] = frame[::-1, ::-1, :]
 
         point, _, sat_img = find_marker(frame)
-        canvas[frame_height:, frame_width:, :] = np.expand_dims(sat_img, axis=2)
+        canvas[frame_height:, frame_width:, :] = np.expand_dims(sat_img, axis=2)[::-1, ::-1, :]
 
         if point is not None:
-            point = (point[0], client_height - point[1])
-            (x, y) = drawing.computedrawcoordinates(point[0], point[1])
+            px, py = point
+            if px >= client_x and px <= client_x + client_width and \
+               py >= client_y and py <= client_y + client_height:
 
-            path_buffer.put((x, y))
+                # Put coordinates within the client box
+                px -= client_x
+                py -= client_y
 
-            # Draw raw coordinates
-            cv2.line(canvas, raw_history.last(), point, (255, 255, 255), 3)
-            cv2.circle(canvas, point, 5, (255, 255, 255))
+                # Mirror x because we're behind the camera
+                point = (client_width - px, client_height - py)
 
-            # Draw draw coordinates
-            draw_canvas = canvas[frame_height:, :frame_width, :]
+                (x, y) = drawing.computedrawcoordinates(*point)
 
-            def paper_to_pixel(p):
-                return (int(p[0] / target_width * client_width),
-                        int(p[1] / target_height * client_height))
+                path_buffer.put((x, y))
 
-            if draw_history.last() is not None:
-                cv2.line(
+                # Draw raw coordinates
+
+                point = (int(point[0] * frame_width / client_width), int(point[1] * frame_height / client_height))
+                cv2.line(canvas, raw_history.last(), point, (255, 255, 255), 3)
+                cv2.circle(canvas, point, 10, (255, 255, 255), -1)
+
+                # Draw draw coordinates
+                draw_canvas = canvas[frame_height:, :frame_width, :]
+
+                def paper_to_pixel(p):
+                    return (int(p[0] / target_width * frame_width),
+                            int(p[1] / target_height * frame_height))
+
+                if draw_history.last() is not None:
+                    cv2.line(
+                        draw_canvas,
+                        paper_to_pixel(draw_history.last()),
+                        paper_to_pixel((x, y)),
+                        (255, 255, 0),
+                        3)
+                cv2.circle(
                     draw_canvas,
-                    paper_to_pixel(draw_history.last()),
                     paper_to_pixel((x, y)),
+                    10,
                     (255, 255, 0),
-                    3)
-            cv2.circle(
-                draw_canvas,
-                paper_to_pixel(point),
-                5,
-                (255, 255, 0))
+                    -1)
 
-            raw_history.shift(point)
-            draw_history.shift((x, y))
+                raw_history.shift(point)
+                draw_history.shift((x, y))
 
         camera_canvas = canvas[:, frame_width:, :]
-        # cv2.line(camera_canvas, (client_width, 0), (client_width, frame_height), (255, 255, 0), 3)
+        cv2.line(camera_canvas, (client_x, 0), (client_x, frame_height), (255, 255, 0), 3)
+        cv2.line(camera_canvas, (client_x + client_width, 0), (client_x + client_width, frame_height), (255, 255, 0), 3)
+        cv2.line(camera_canvas, (0, client_y), (frame_width, client_y), (255, 255, 0), 3)
+        cv2.line(camera_canvas, (0, client_y + client_height), (frame_width, client_y + client_height), (255, 255, 0), 3)
 
         canvas_resize = cv2.resize(canvas, (1920, 1080))
         cv2.imshow('frame', canvas_resize)
