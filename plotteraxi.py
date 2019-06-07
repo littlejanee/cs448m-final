@@ -6,6 +6,7 @@ import time
 import axi
 from axi import Device
 
+
 class PlotterAxi:
     def __init__(self, port=None, baud=115200):
         # if port is None:
@@ -19,20 +20,20 @@ class PlotterAxi:
         self.device = Device()
         self.device.enable_motors()
         initpos = self.device.read_position()
-        print initpos
+        print(initpos)
         self.device.zero_position()
-        print self.device.read_position()
+        print(self.device.read_position())
 
     # def write(self, s):
     #     self.port.write((s + '\n').encode())
     #     return self.port.readline()
-        
+
     def sprint(self, x, y):
+        self.device.goto_rel(x - self.x, y - self.y)
         self.x = x
         self.y = y
-        self.device.goto(x, y)
         # return self.write('G0 X{} Y{}'.format(x, y))
-    
+
     def sprint_rel(self, x, y):
         self.x += x
         self.y += y
@@ -48,9 +49,9 @@ class PlotterAxi:
         # return self.write('G0 Z-1')
 
     def move(self, x, y, feed=1000):
+        self.device.move_rel(x - self.x, y - self.y)
         self.x = x
         self.y = y
-        self.device.move(x, y)
         # return self.write('G1 X{} Y{} F{}'.format(x, y, feed))
 
     def move_rel(self, x, y, **kwargs):
@@ -58,16 +59,14 @@ class PlotterAxi:
         self.y += y
         self.device.move_rel(x, y)
         return self.move(self.x, self.y, **kwargs)
-        
+
     def runfile(self, path):
         contents = open(os.path.expanduser(path), 'r').readlines()
         commands = []
         for line in contents:
             if line[0] == 'G' or line[0] == 'M':
                 commands.append(line)
-        
+
         for cmd in commands:
             print(cmd)
             self.write(cmd)
-        
-
