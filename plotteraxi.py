@@ -48,6 +48,11 @@ class PlotterAxi:
         self.device.pen_down()
         # return self.write('G0 Z-1')
 
+    def path(self, path):
+        self.device.run_path([(self.x, self.y)] + path)
+        self.x = path[-1][0]
+        self.y = path[-1][1]
+
     def move(self, x, y, feed=1000):
         self.device.move_rel(x - self.x, y - self.y)
         self.x = x

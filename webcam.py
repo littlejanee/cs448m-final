@@ -6,15 +6,17 @@ from scipy import interpolate as interp
 import numpy
 from pprint import pprint
 import atexit
+from queue import Queue
+from threading import Thread
 
-DRY_RUN = True
+DRY_RUN = False
 FULL_DEBUG = True
 
 client_width = 1920
 client_height = 1080
 
-target_width = 11.0
-target_height = 8.5
+target_width = 11.0 - 2
+target_height = 8.5 - 2
 
 border = .2
 
@@ -128,10 +130,11 @@ def main(cam_idx):
         p = point_to_canvas(p)
         cv2.circle(canvas, p, 5, (255, 255, 255), 3)
 
+    path_buffer = Queue()
+
     # initialize plotter
     if not DRY_RUN:
         p = PlotterAxi()
-        p.down()
 
         def disable_device():
             p.device.wait()
@@ -139,6 +142,26 @@ def main(cam_idx):
             p.sprint(0, 0)
 
         atexit.register(disable_device)
+
+        def send_commands():
+            while True:
+                path = [path_buffer.get() for _ in range(5)]
+                p.path(path)
+
+        Thread(target=send_commands, daemon=True).start()
+
+        def recv_commands():
+            while True:
+                inp = input().strip()
+                p.device.wait()
+                if inp == 'i':
+                    p.up()
+                elif inp == 'o':
+                    p.down()
+                elif inp == 'h':
+                    p.move(0, 0)
+
+        Thread(target=recv_commands, daemon=True).start()
 
     while True:
         result, frame = cam.read()
@@ -158,7 +181,7 @@ def main(cam_idx):
 
             points = history.pts[-3:] + [(x, y)]
             if len(points) == 4:
-                interped = CatmullRomSpline(*points, nPoints=10)
+                interped = CatmullRomSpline(*points, nPoints=6)
                 last_point = history.last()
 
                 interped = [
@@ -167,13 +190,15 @@ def main(cam_idx):
                     for (x, y) in interped
                 ]
 
-                if np.any(np.isnan(np.array(interped))):
+                if True or np.any(np.isnan(np.array(interped))):
                     if not DRY_RUN:
-                        p.move(x, y)
+                        #p.move(x, y)
+                        path_buffer.put((x, y))
+
                     line(history.last(), (x, y), color=(255, 0, 0))
                 else:
                     if not DRY_RUN:
-                        p.device.run_path([last_point] + interped)
+                        p.path(interped)
 
                     for (x_i, y_i) in interped:
                         new_point = (x_i, y_i)
@@ -181,7 +206,7 @@ def main(cam_idx):
                         last_point = new_point
             else:
                 if not DRY_RUN:
-                    p.move(x, y)
+                    path_buffer.put((x, y))
                 line(history.last(), (x, y))
 
             line(history.last(), (x, y), color=(255, 255, 255))
