@@ -12,7 +12,7 @@ from threading import Thread, Lock
 import subprocess as sp
 
 
-DRY_RUN = False
+DRY_RUN = True
 
 client_width = 1350#1920
 client_x = int(1920 / 2 - client_width / 2)
@@ -126,7 +126,7 @@ def find_marker(frame):
             cy = int(M["m01"] / M["m00"])
             point = cx, cy
 
-    return point, masked, sat_bright
+    return point, sat_bright
 
 
 class History:
@@ -142,6 +142,9 @@ class History:
     def last(self):
         return self.pts[-1] if len(self.pts) > 0 else None
 
+
+def start_thread(f):
+    return Thread(target=f, daemon=True).start()
 
 def main(cam_idx):
 
@@ -159,6 +162,7 @@ def main(cam_idx):
     shape[0] *= 2
     shape[1] *= 2
     canvas = np.zeros(shape, dtype=np.uint8)
+
     raw_history = History()
     draw_history = History()
 
@@ -166,8 +170,6 @@ def main(cam_idx):
     drawing.setstyle(0)
     drawing.setclient(client_width, client_height)
     drawing.settarget(target_width, target_height, border)
-
-    p = PlotterAxi()
 
     path_buffer = Queue()
     device_lock = Lock()
@@ -194,7 +196,7 @@ def main(cam_idx):
                 with device_lock:
                     p.path(path)
 
-        Thread(target=send_commands, daemon=True).start()
+        start_thread(send_commands)
 
     def recv_commands():
         while True:
@@ -213,62 +215,43 @@ def main(cam_idx):
                 except ValueError:
                     pass
 
+    start_thread(recv_commands)
 
-    Thread(target=recv_commands, daemon=True).start()
+    def draw_debug_info(frame, raw_point, draw_point):
+        if raw_point is not None and draw_point is not None:
+            def raw_to_pixel(p):
+                return (int(p[0] * frame_width / client_width),
+                        int(p[1] * frame_height / client_height))
+            # Draw raw coordinates
+            raw_point = raw_to_pixel(raw_point)
+            if raw_history.last() is not None:
+                cv2.line(canvas, raw_to_pixel(raw_history.last()), raw_point, (255, 255, 255), 3)
+            cv2.circle(canvas, raw_point, 10, (255, 255, 255), -1)
 
-    while True:
-        result, frame = cam.read()
-        assert result
-        canvas[:frame_height, frame_width:, :] = frame[::-1, ::-1, :]
+            # Draw draw coordinates
+            draw_canvas = canvas[frame_height:, :frame_width, :]
 
-        point, _, sat_img = find_marker(frame)
-        canvas[frame_height:, frame_width:, :] = np.expand_dims(sat_img, axis=2)[::-1, ::-1, :]
+            def paper_to_pixel(p):
+                return (int(p[0] / target_width * frame_width),
+                        int(p[1] / target_height * frame_height))
 
-        if point is not None:
-            px, py = point
-            if px >= client_x and px <= client_x + client_width and \
-               py >= client_y and py <= client_y + client_height:
-
-                # Put coordinates within the client box
-                px -= client_x
-                py -= client_y
-
-                # Mirror x because we're behind the camera
-                point = (client_width - px, client_height - py)
-
-                (x, y) = drawing.computedrawcoordinates(*point)
-
-                path_buffer.put((x, y))
-
-                # Draw raw coordinates
-
-                point = (int(point[0] * frame_width / client_width), int(point[1] * frame_height / client_height))
-                cv2.line(canvas, raw_history.last(), point, (255, 255, 255), 3)
-                cv2.circle(canvas, point, 10, (255, 255, 255), -1)
-
-                # Draw draw coordinates
-                draw_canvas = canvas[frame_height:, :frame_width, :]
-
-                def paper_to_pixel(p):
-                    return (int(p[0] / target_width * frame_width),
-                            int(p[1] / target_height * frame_height))
-
-                if draw_history.last() is not None:
-                    cv2.line(
-                        draw_canvas,
-                        paper_to_pixel(draw_history.last()),
-                        paper_to_pixel((x, y)),
-                        (255, 255, 0),
-                        3)
-                cv2.circle(
+            if draw_history.last() is not None:
+                cv2.line(
                     draw_canvas,
-                    paper_to_pixel((x, y)),
-                    10,
+                    paper_to_pixel(draw_history.last()),
+                    paper_to_pixel(draw_point),
                     (255, 255, 0),
-                    -1)
+                    3)
+            cv2.circle(
+                draw_canvas,
+                paper_to_pixel(draw_point),
+                10,
+                (255, 255, 0),
+                -1)
 
-                raw_history.shift(point)
-                draw_history.shift((x, y))
+        canvas[:frame_height, frame_width:, :] = frame[::-1, ::-1, :]
+        canvas[frame_height:, frame_width:, :] = \
+            np.expand_dims(sat_img, axis=2)[::-1, ::-1, :]
 
         camera_canvas = canvas[:, frame_width:, :]
         cv2.line(camera_canvas, (client_x, 0), (client_x, frame_height), (255, 255, 0), 3)
@@ -279,6 +262,36 @@ def main(cam_idx):
         canvas_resize = cv2.resize(canvas, (1920, 1080))
         cv2.imshow('frame', canvas_resize)
         cv2.waitKey(30)
+
+    while True:
+        result, frame = cam.read()
+        assert result
+
+        raw_point, sat_img = find_marker(frame.copy())
+        draw_point = None
+
+        if raw_point is not None:
+            px, py = raw_point
+            if px >= client_x and px <= client_x + client_width and \
+               py >= client_y and py <= client_y + client_height:
+
+                # Put coordinates within the client box
+                px -= client_x
+                py -= client_y
+
+                # Mirror x because we're behind the camera
+                raw_point = (client_width - px, client_height - py)
+
+                draw_point = drawing.computedrawcoordinates(*raw_point)
+
+                path_buffer.put(draw_point)
+
+        draw_debug_info(frame, raw_point, draw_point)
+
+        if raw_point is not None and draw_point is not None:
+            raw_history.shift(raw_point)
+            draw_history.shift(draw_point)
+
 
 if __name__ == "__main__":
     cam_idx = int(sys.argv[1]) if len(sys.argv) > 1 else 1
