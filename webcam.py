@@ -15,6 +15,8 @@ import pickle
 
 DRY_RUN = True
 
+DEBUG = True
+
 client_width = 1350#1920
 client_x = int(1920 / 2 - client_width / 2)
 
@@ -29,29 +31,16 @@ border = 1.5
 intrinsics = pickle.load(open('data/intrinsics.pkl', 'rb'))
 newcameramtx = None
 
-# marker colors in RGB
-# yellow = (232, 187, 101)
-# green = (57, 117, 97)
-# blue = (28, 128, 168)
-# red = (171, 21, 36)
-
-# marker colors in HSV
-# yellow = (39,56,91)
-# green = (160, 51, 46)
-# blue = (197, 83, 66)
-# red = (354, 88, 67)
-
-sat_low = 60#30
-sat_high = 255#100
-value_low = 60#35
-value_high = 255#100
+sat_low = 60
+sat_high = 255
+value_low = 100
+value_high = 200
 
 boundaries = [
-    # ([0, sat_low, value_low], [255, sat_high, value_high]), # test
     ([25, sat_low, value_low], [65, sat_high, value_high]), # yellow
     ([95, sat_low, value_low], [120, sat_high, value_high]), # green
-    ([130, sat_low, value_low], [180, sat_high, value_high]), # blue
-    ([200, sat_low, value_low], [300, sat_high, value_high]), # red
+    ([130, sat_low, value_low], [155, sat_high, value_high]), # blue
+    ([230, sat_low, value_low], [300, sat_high, value_high]), # red
 ]
 
 # returns x, y (1920, 1080) or None if can't find
@@ -74,11 +63,13 @@ def find_marker_for_id(frame, marker_id):
     hue_color = cv2.inRange(hsv, lower, upper)
     hue_color = cv2.erode(hue_color, None, iterations=2)
     hue_color = cv2.dilate(hue_color, None, iterations=2)
-    # cv2.imshow('hue_color', hue_color)
 
     frame_fixed_color = cv2.bitwise_and(frame_fixed, frame_fixed, mask = hue_color)
-    # cv2.imshow('frame_fixed', np.hstack([frame_fixed, frame_fixed_color]))
-    # cv2.waitKey(0)
+
+    if DEBUG:
+        cv2.imshow('hue_color', hue_color)
+        cv2.imshow('frame_fixed', np.hstack([frame_fixed, frame_fixed_color]))
+        cv2.waitKey(0)
 
     # find center
     cnts, _ = cv2.findContours(hue_color, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -114,10 +105,12 @@ def start_thread(f):
     return Thread(target=f, daemon=True).start()
 
 def main(cam_idx):
-    # frame = cv2.imread("color-webcam.jpg", cv2.IMREAD_COLOR)
-    # find_marker_for_id(frame, 3)
-    # if cv2.waitKey(1) == 27:
-    #     cv2.destroyAllWindows()
+    if DEBUG:
+        frame = cv2.imread("data/color-calib-2.png", cv2.IMREAD_COLOR)
+        frame_resize = cv2.resize(frame, (int(1920/2), int(1080/2)))
+        find_marker_for_id(frame_resize, 3) # 3 = red, 2 = blue
+        if cv2.waitKey(1) == 27:
+            cv2.destroyAllWindows()
 
     cam = cv2.VideoCapture(cam_idx)
     result, frame = cam.read()
