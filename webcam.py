@@ -27,6 +27,79 @@ border = 1.5
 
 fgbg = cv2.createBackgroundSubtractorMOG2()
 
+# marker colors in RGB
+# yellow = (232, 187, 101)
+# green = (57, 117, 97)
+# blue = (28, 128, 168)
+# red = (171, 21, 36)
+
+# marker colors in HSV
+# yellow = (39,56,91)
+# green = (160, 51, 46)
+# blue = (197, 83, 66)
+# red = (354, 88, 67)
+
+sat_low = 60#30
+sat_high = 255#100
+value_low = 60#35
+value_high = 255#100
+
+boundaries = [
+    # ([0, sat_low, value_low], [255, sat_high, value_high]), # test
+    ([25, sat_low, value_low], [65, sat_high, value_high]), # yellow
+    ([95, sat_low, value_low], [120, sat_high, value_high]), # green
+    ([130, sat_low, value_low], [180, sat_high, value_high]), # blue
+    ([200, sat_low, value_low], [300, sat_high, value_high]), # red
+]
+
+# returns x, y (1920, 1080) or None if can't find
+def find_marker_for_id(frame, marker_id):
+    #fgmask = fgbg.apply(frame)
+    #masked = cv2.bitwise_and(frame, frame, mask=fgmask)
+    masked = frame
+
+    hsv = cv2.cvtColor(masked, cv2.COLOR_BGR2HSV)
+
+    # sat = hsv[:, :, 1]
+    # _, sat_bright = cv2.threshold(sat, 200, 255, cv2.THRESH_TOZERO)
+
+    # sat_bright = cv2.erode(sat_bright, None, iterations=2)
+    # sat_bright = cv2.dilate(sat_bright, None, iterations=2)
+
+    lower = np.array(boundaries[marker_id][0])
+    upper = np.array(boundaries[marker_id][1])
+
+    lower[0] = int(lower[0] / 360 * 255.)
+    upper[0] = int(upper[0] / 360 * 255.) # maybe ceil/floor and clip?
+
+    print (lower)
+    print ('hsv[100][100]')
+    print (hsv[100][100])
+
+    hue_color = cv2.inRange(hsv, lower, upper)
+    hue_color = cv2.erode(hue_color, None, iterations=2)
+    hue_color = cv2.dilate(hue_color, None, iterations=2)
+    cv2.imshow('hue_color', hue_color)
+
+    masked_color = cv2.bitwise_and(masked, masked, mask = hue_color)
+    cv2.imshow('masked', np.hstack([masked, masked_color]))
+    cv2.waitKey(0)
+
+    # find center
+    cnts, _ = cv2.findContours(hue_color, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cnts_srt = sorted([(c, cv2.contourArea(c)) for c in cnts], key=lambda t: t[1])
+    point = None
+    if len(cnts) > 0:
+        (c, area) = cnts_srt[-1]
+
+        if area > 1000:
+            M = cv2.moments(c)
+            cx = int(M["m10"] / M["m00"])
+            cy = int(M["m01"] / M["m00"])
+            point = cx, cy
+
+    return point, masked, sat_bright
+
 
 # returns x, y (1920, 1080) or None if can't find
 def find_marker(frame):
@@ -71,6 +144,12 @@ class History:
 
 
 def main(cam_idx):
+
+    frame = cv2.imread("color-webcam.jpg", cv2.IMREAD_COLOR)
+    find_marker_for_id(frame, 3)
+    if cv2.waitKey(1) == 27:
+        cv2.destroyAllWindows()
+
     cam = cv2.VideoCapture(cam_idx)
     result, frame = cam.read()
     assert result
