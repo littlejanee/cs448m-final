@@ -1,3 +1,5 @@
+import numpy as np
+
 class Drawing:
     def __init__(self, style=0):
         self.style = 0
@@ -32,10 +34,12 @@ class Drawing:
         elif (self.style == 2): # other things...
             x_mod = x
             y_mod = y
+            
+        x_target = x_mod * self.target_width / self.client_width
+        y_target = y_mod * self.target_height / self.client_height
 
-        x_target = x_mod * (self.target_width - self.border) / self.client_width + self.border / 2
-        y_target = y_mod * (self.target_height - self.border) / self.client_height + self.border / 2
-
+        x_target = np.clip(x_target, self.border, self.target_width - self.border)
+        y_target = np.clip(y_target, self.border, self.target_height - self.border)
             
         return (x_target, y_target) # x_target, y_target is in target (axi) coordinates
 

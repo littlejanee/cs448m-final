@@ -12,10 +12,13 @@ target_height = 8.5 #150
 
 border = .2
 
+DRY_RUN = True
 
 server = WebsocketServer(9001)
-# p = Plotter()
-p = PlotterAxi()
+
+if not DRY_RUN:
+    # p = Plotter()
+    p = PlotterAxi()
 
 drawing = Drawing()
 drawing.setstyle(0)
@@ -40,18 +43,18 @@ def recv(client, server, message):
     x = x_draw
     y = y_draw
 
-    x_border = x0 * (target_width - border) / client_width + border / 2
-    y_border = y0 * (target_height - border) / client_height + border / 2
+    # x_border = x0 * (target_width - border) / client_width + border / 2
+    # y_border = y0 * (target_height - border) / client_height + border / 2
+    # print('border: ', x_border, y_border)
 
-    print('border: ', x_border, y_border)
-
-    if ty == 'start':
-        p.sprint(x, y)
-        p.down()
-    elif ty == 'move':
-        p.move(x, y, feed=10000)
-    elif ty == 'end':
-        p.up()
+    if not DRY_RUN:
+        if ty == 'start':
+            p.sprint(x, y)
+            p.down()
+        elif ty == 'move':
+            p.move(x, y, feed=10000)
+        elif ty == 'end':
+            p.up()
         
 
 server.set_fn_message_received(recv)
