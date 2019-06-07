@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import sys
 from plotteraxi import PlotterAxi
+from drawing import Drawing
 from scipy import interpolate as interp
 import numpy
 from pprint import pprint
@@ -110,6 +111,15 @@ def main(cam_idx):
     canvas = np.zeros(shape, dtype=np.uint8)
     history = History()
 
+
+    drawing = Drawing()
+    drawing.setstyle(0)
+    drawing.setclient(client_width, client_height)
+    drawing.settarget(target_width, target_height, border)
+
+    p = PlotterAxi()
+    p.down()
+
     def point_to_canvas(p):
         (x, y) = p
         return (
@@ -175,9 +185,9 @@ def main(cam_idx):
             canvas[frame_height:, frame_width:, :] = np.expand_dims(sat_img, axis=2)
 
         if point is not None:
-
-            x = point[0] * (target_width - border) / client_width + border / 2
-            y = point[1] * (target_height - border) / client_height + border / 2
+            print('client x, y: ', point[0], point[1])
+            (x, y) = drawing.computedrawcoordinates(point[0], point[1])
+            print('target x, y: ', x, y)
 
             points = history.pts[-3:] + [(x, y)]
             if len(points) == 4:
