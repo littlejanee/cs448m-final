@@ -8,7 +8,9 @@ import numpy
 from pprint import pprint
 import atexit
 from queue import Queue
-from threading import Thread
+from threading import Thread, Lock
+import subprocess as sp
+
 
 DRY_RUN = False
 FULL_DEBUG = True
@@ -64,40 +66,6 @@ class History:
     def last(self):
         return self.pts[-1] if len(self.pts) > 0 else None
 
-def CatmullRomSpline(P0, P1, P2, P3, nPoints=100):
-  """
-  P0, P1, P2, and P3 should be (x,y) point pairs that define the Catmull-Rom spline.
-  nPoints is the number of points to include in this curve segment.
-  """
-  # Convert the points to numpy so that we can do array multiplication
-  P0, P1, P2, P3 = map(numpy.array, [P0, P1, P2, P3])
-
-  # Calculate t0 to t4
-  alpha = 0.5
-  def tj(ti, Pi, Pj):
-    xi, yi = Pi
-    xj, yj = Pj
-    return ( ( (xj-xi)**2 + (yj-yi)**2 )**0.5 )**alpha + ti
-
-  t0 = 0
-  t1 = tj(t0, P0, P1)
-  t2 = tj(t1, P1, P2)
-  t3 = tj(t2, P2, P3)
-
-  # Only calculate points between P1 and P2
-  t = numpy.linspace(t1,t2,nPoints)
-
-  # Reshape so that we can multiply by the points P0 to P3
-  # and get a point for each value of t.
-  t = t.reshape(len(t),1)
-  A1 = (t1-t)/(t1-t0)*P0 + (t-t0)/(t1-t0)*P1
-  A2 = (t2-t)/(t2-t1)*P1 + (t-t1)/(t2-t1)*P2
-  A3 = (t3-t)/(t3-t2)*P2 + (t-t2)/(t3-t2)*P3
-  B1 = (t2-t)/(t2-t0)*A1 + (t-t0)/(t2-t0)*A2
-  B2 = (t3-t)/(t3-t1)*A2 + (t-t1)/(t3-t1)*A3
-
-  C  = (t2-t)/(t2-t1)*B1 + (t-t1)/(t2-t1)*B2
-  return C
 
 def main(cam_idx):
     cam = cv2.VideoCapture(cam_idx)
@@ -111,14 +79,12 @@ def main(cam_idx):
     canvas = np.zeros(shape, dtype=np.uint8)
     history = History()
 
-
     drawing = Drawing()
     drawing.setstyle(0)
     drawing.setclient(client_width, client_height)
     drawing.settarget(target_width, target_height, border)
 
     p = PlotterAxi()
-    p.down()
 
     def point_to_canvas(p):
         (x, y) = p
@@ -141,35 +107,38 @@ def main(cam_idx):
         cv2.circle(canvas, p, 5, (255, 255, 255), 3)
 
     path_buffer = Queue()
+    device_lock = Lock()
 
     # initialize plotter
     if not DRY_RUN:
         p = PlotterAxi()
 
         def disable_device():
-            p.device.wait()
-            p.up()
-            p.sprint(0, 0)
+            with device_lock:
+                p.device.wait()
+                p.up()
+                p.sprint(0, 0)
+                p.device.wait()
+                sp.check_call(['axi', 'off'])
 
         atexit.register(disable_device)
 
         def send_commands():
             while True:
-                path = [path_buffer.get() for _ in range(5)]
-                p.path(path)
+                path = [path_buffer.get() for _ in range(3)]
+                with device_lock:
+                    p.path(path)
 
         Thread(target=send_commands, daemon=True).start()
 
         def recv_commands():
             while True:
                 inp = input().strip()
-                p.device.wait()
-                if inp == 'i':
-                    p.up()
-                elif inp == 'o':
-                    p.down()
-                elif inp == 'h':
-                    p.move(0, 0)
+                with device_lock:
+                    if inp == 'i':
+                        p.up()
+                    elif inp == 'o':
+                        p.down()
 
         Thread(target=recv_commands, daemon=True).start()
 
@@ -185,39 +154,10 @@ def main(cam_idx):
             canvas[frame_height:, frame_width:, :] = np.expand_dims(sat_img, axis=2)
 
         if point is not None:
-            print('client x, y: ', point[0], point[1])
             (x, y) = drawing.computedrawcoordinates(point[0], point[1])
-            print('target x, y: ', x, y)
 
-            points = history.pts[-3:] + [(x, y)]
-            if len(points) == 4:
-                interped = CatmullRomSpline(*points, nPoints=6)
-                last_point = history.last()
-
-                interped = [
-                    (min(max(x, border), target_width - border),
-                     min(max(y, border), target_height - border))
-                    for (x, y) in interped
-                ]
-
-                if True or np.any(np.isnan(np.array(interped))):
-                    if not DRY_RUN:
-                        #p.move(x, y)
-                        path_buffer.put((x, y))
-
-                    line(history.last(), (x, y), color=(255, 0, 0))
-                else:
-                    if not DRY_RUN:
-                        p.path(interped)
-
-                    for (x_i, y_i) in interped:
-                        new_point = (x_i, y_i)
-                        line(last_point, new_point)
-                        last_point = new_point
-            else:
-                if not DRY_RUN:
-                    path_buffer.put((x, y))
-                line(history.last(), (x, y))
+            path_buffer.put((x, y))
+            line(history.last(), (x, y))
 
             line(history.last(), (x, y), color=(255, 255, 255))
             circle((x, y))
