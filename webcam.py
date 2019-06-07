@@ -13,15 +13,14 @@ import subprocess as sp
 
 
 DRY_RUN = False
-FULL_DEBUG = True
 
 client_width = 1920
 client_height = 1080
 
-target_width = 11.0 - 2
-target_height = 8.5 - 2
+target_width = 11.0
+target_height = 8.5
 
-border = .2
+border = 1
 
 fgbg = cv2.createBackgroundSubtractorMOG2()
 
@@ -77,7 +76,8 @@ def main(cam_idx):
     shape[0] *= 2
     shape[1] *= 2
     canvas = np.zeros(shape, dtype=np.uint8)
-    history = History()
+    raw_history = History()
+    draw_history = History()
 
     drawing = Drawing()
     drawing.setstyle(0)
@@ -85,26 +85,6 @@ def main(cam_idx):
     drawing.settarget(target_width, target_height, border)
 
     p = PlotterAxi()
-
-    def point_to_canvas(p):
-        (x, y) = p
-        return (
-            int((x - border / 2) * client_width / (target_width - border)),
-            int((y - border / 2) * client_height / (target_height - border))
-        )
-
-    def line(p1, p2, color=(255, 0, 0)):
-        if p1 is None or p2 is None:
-            return
-
-        p1 = point_to_canvas(p1)
-        p2 = point_to_canvas(p2)
-
-        cv2.line(canvas, p1, p2, color, 3)
-
-    def circle(p):
-        p = point_to_canvas(p)
-        cv2.circle(canvas, p, 5, (255, 255, 255), 3)
 
     path_buffer = Queue()
     device_lock = Lock()
@@ -131,41 +111,68 @@ def main(cam_idx):
 
         Thread(target=send_commands, daemon=True).start()
 
-        def recv_commands():
-            while True:
-                inp = input().strip()
-                with device_lock:
-                    if inp == 'i':
-                        p.up()
-                    elif inp == 'o':
-                        p.down()
+    def recv_commands():
+        while True:
+            inp = input().strip()
+            with device_lock:
+                if inp == 'i':
+                    p.up()
+                elif inp == 'o':
+                    p.down()
 
-        Thread(target=recv_commands, daemon=True).start()
+                try:
+                    print(inp)
+                    n = int(inp)
+                    drawing.setstyle(n)
+                    print('Set style to {}'.format(n))
+                except ValueError:
+                    pass
+
+
+    Thread(target=recv_commands, daemon=True).start()
 
     while True:
         result, frame = cam.read()
         assert result
-        if FULL_DEBUG:
-            canvas[:frame_height, frame_width:, :] = frame
+        canvas[:frame_height, frame_width:, :] = frame
 
-        point, mask_img, sat_img = find_marker(frame)
-        if FULL_DEBUG:
-            canvas[frame_height:, :frame_width, :] = mask_img
-            canvas[frame_height:, frame_width:, :] = np.expand_dims(sat_img, axis=2)
+        point, _, sat_img = find_marker(frame)
+        canvas[frame_height:, frame_width:, :] = np.expand_dims(sat_img, axis=2)
 
         if point is not None:
             (x, y) = drawing.computedrawcoordinates(point[0], point[1])
 
             path_buffer.put((x, y))
-            line(history.last(), (x, y))
 
-            line(history.last(), (x, y), color=(255, 255, 255))
-            circle((x, y))
-            history.shift((x, y))
+            # Draw raw coordinates
+            cv2.line(canvas, raw_history.last(), point, (255, 255, 255), 3)
+            cv2.circle(canvas, point, 5, (255, 255, 255))
 
-        if FULL_DEBUG:
-            cv2.imshow('frame', canvas)
-            cv2.waitKey(30)
+            # Draw draw coordinates
+            draw_canvas = canvas[frame_height:, :frame_width, :]
+
+            def paper_to_pixel(p):
+                return (int(p[0] / target_width * client_width),
+                        int(p[1] / target_height * client_height))
+
+            if draw_history.last() is not None:
+                cv2.line(
+                    draw_canvas,
+                    paper_to_pixel(draw_history.last()),
+                    paper_to_pixel((x, y)),
+                    (255, 255, 0),
+                    3)
+            cv2.circle(
+                draw_canvas,
+                paper_to_pixel(point),
+                5,
+                (255, 255, 0))
+
+            raw_history.shift(point)
+            draw_history.shift((x, y))
+
+        cv2.imshow('frame', canvas)
+        cv2.waitKey(30)
 
 if __name__ == "__main__":
     cam_idx = int(sys.argv[1]) if len(sys.argv) > 1 else 1
