@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import sys
 from plotteraxi import PlotterAxi
+from drawing import Drawing
 
 DEBUG = True
 
@@ -54,12 +55,6 @@ class History:
     def last(self):
         return self.pts[-1] if len(self.pts) > 0 else None
 
-
-# def draw(x, y):
-#     x_border = x0 * (target_width - border) / client_width + border / 2
-#     y_border = y0 * (target_height - border) / client_height + border / 2
-#     p.move(x_border, y_border)
-
 def main(cam_idx):
     cam = cv2.VideoCapture(cam_idx)
     result, frame = cam.read()
@@ -68,7 +63,11 @@ def main(cam_idx):
     canvas = np.zeros(frame.shape)
     history = History()
 
-    # initialize plotter
+    drawing = Drawing()
+    drawing.setstyle(0)
+    drawing.setclient(client_width, client_height)
+    drawing.settarget(target_width, target_height, border)
+
     p = PlotterAxi()
     p.down()
 
@@ -84,10 +83,10 @@ def main(cam_idx):
                     cv2.line(canvas, history.last(), point, (255, 255, 255), 3)
 
             # draw things
-            x_border = point[0] * (target_width - border) / client_width + border / 2
-            y_border = point[1] * (target_height - border) / client_height + border / 2
-            p.move(x_border, y_border)
-            # draw(point.x, point.y)
+            print('client x, y: ', point[0], point[1])
+            (x_draw, y_draw) = drawing.computedrawcoordinates(point[0], point[1])
+            print('target x, y: ', x_draw, y_draw)
+            p.move(x_draw, y_draw)
 
             history.shift(point)
 
