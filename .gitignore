@@ -1,3 +1,4 @@
 *.pyc
 *.DS_Store
 .ipynb_checkpoints/
+data/sample-frame.png
