@@ -37,6 +37,7 @@ def find_marker(frame):
     hsv = cv2.cvtColor(masked, cv2.COLOR_BGR2HSV)
     sat = hsv[:, :, 1]
     _, sat_bright = cv2.threshold(sat, 200, 255, cv2.THRESH_TOZERO)
+
     sat_bright = cv2.erode(sat_bright, None, iterations=2)
     sat_bright = cv2.dilate(sat_bright, None, iterations=2)
 
