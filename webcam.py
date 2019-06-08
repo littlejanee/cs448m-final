@@ -13,7 +13,7 @@ import subprocess as sp
 import pickle
 
 
-DRY_RUN = False
+DRY_RUN = True
 
 DEBUG = True
 
@@ -37,7 +37,7 @@ newcameramtx = None
 sat_low = 60
 sat_high = 255
 value_low = 100
-value_high = 200
+value_high = 255
 
 # frame1
     # red: [177 230 154]
@@ -50,11 +50,22 @@ value_high = 200
     # blue: [105 169 152]
     # machine blue: [116 188 46]
 
+# frame4
+    # yellow: [25 159 220]
+    # board: [17 101 104] [15 66 144]
+
+# frame5
+    # yellow: [ 21 104 238] [ 30  71 255]
+    # board: [ 14  83 151]
+    # green: [ 77 115 129]
+    # red: [178 180 160]
+    # blue: [100 150 195]
+
 boundaries = [
-    ([15, sat_low, value_low], [45, sat_high, value_high]), # yellow
-    ([50, sat_low, value_low], [85, sat_high, value_high]), # green
-    ([90, 100, 120], [130, 255, 255]), # blue
-    ([140, 160, 60], [255, 255, 255]), # red
+    ([15, 60, 190], [40, sat_high, value_high]), # yellow
+    ([50, 80, 90], [85, sat_high, value_high]), # green
+    ([90, 100, 120], [130, sat_high, value_high]), # blue
+    ([140, 160, 60], [255, sat_high, value_high]), # red
 ]
 
 COLOR_YELLOW = 0
@@ -72,25 +83,18 @@ def find_marker_for_id(frame, marker_id):
     lower = np.array(boundaries[marker_id][0])
     upper = np.array(boundaries[marker_id][1])
 
-    # lower[0] = int(lower[0] / 360 * 255.)
-    # upper[0] = int(upper[0] / 360 * 255.) # maybe ceil/floor and clip?
-
-    # print (lower)
-    frame_fixed_resize = cv2.resize(frame_fixed, (int(1920/4), int(1080/4)))
-    hsv_resize = cv2.cvtColor(frame_fixed_resize, cv2.COLOR_BGR2HSV)
-
     hue_color = cv2.inRange(hsv, lower, upper)
     hue_color = cv2.erode(hue_color, None, iterations=2)
     hue_color = cv2.dilate(hue_color, None, iterations=2)
 
     frame_fixed_color = cv2.bitwise_and(frame_fixed, frame_fixed, mask = hue_color)
 
-    # if DEBUG:
-    #     # cv2.imshow('hue_color', hue_color)
-    #     frame_fixed_resize = cv2.resize(frame_fixed, (int(1920/4), int(1080/4)))
-    #     frame_fixed_color_resize = cv2.resize(frame_fixed_color, (int(1920/4), int(1080/4)))
-    #     cv2.imshow('frame_fixed', np.hstack([frame_fixed_resize, frame_fixed_color_resize]))
-    #     cv2.waitKey(0)
+    if DEBUG:
+        # cv2.imshow('hue_color', hue_color)
+        frame_fixed_resize = cv2.resize(frame_fixed, (int(1920/4), int(1080/4)))
+        frame_fixed_color_resize = cv2.resize(frame_fixed_color, (int(1920/4), int(1080/4)))
+        cv2.imshow('frame_fixed', np.hstack([frame_fixed_resize, frame_fixed_color_resize]))
+        cv2.waitKey(0)
 
     # find center
     cnts, _ = cv2.findContours(hue_color, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -130,15 +134,21 @@ def main(cam_idx):
         frame1 = cv2.imread("data/color-calib-1.png", cv2.IMREAD_COLOR)
         frame2 = cv2.imread("data/color-calib-2.png", cv2.IMREAD_COLOR)
         frame3 = cv2.imread("data/color-calib-3.png", cv2.IMREAD_COLOR)
-        frame4 = cv2.imread("data/color-calib-4.png", cv2.IMREAD_COLOR)
-        find_marker_for_id(frame1, COLOR_BLUE)
-        find_marker_for_id(frame1, COLOR_RED)
-        find_marker_for_id(frame2, COLOR_BLUE)
-        find_marker_for_id(frame2, COLOR_RED)
-        find_marker_for_id(frame3, COLOR_BLUE)
-        find_marker_for_id(frame3, COLOR_RED)
+        frame4 = cv2.imread("data/color-calib-4.png", cv2.IMREAD_COLOR) # red, blue, yellow
+        frame5 = cv2.imread("data/color-calib-5.png", cv2.IMREAD_COLOR) # red, blue, yellow, green
+        # find_marker_for_id(frame1, COLOR_BLUE)
+        # find_marker_for_id(frame1, COLOR_RED)
+        # find_marker_for_id(frame2, COLOR_BLUE)
+        # find_marker_for_id(frame2, COLOR_RED)
+        # find_marker_for_id(frame3, COLOR_BLUE)
+        # find_marker_for_id(frame3, COLOR_RED)
         find_marker_for_id(frame4, COLOR_BLUE)
         find_marker_for_id(frame4, COLOR_RED)
+        find_marker_for_id(frame4, COLOR_YELLOW)
+        find_marker_for_id(frame5, COLOR_BLUE)
+        find_marker_for_id(frame5, COLOR_RED)
+        find_marker_for_id(frame5, COLOR_YELLOW)
+        find_marker_for_id(frame5, COLOR_GREEN)
         if cv2.waitKey(1) == 27:
             cv2.destroyAllWindows()
 
