@@ -47,7 +47,10 @@ class Drawing:
     def compute_draw_coordinates(self, x, y): # x,y is in client coordinates
         x_target = x * self.target_width / self.client_width
         y_target = y * self.target_height / self.client_height
+        return (x_target, y_target)
 
+    def compute_draw_coordinates_clipped(self, x, y):
+        (x_target, y_target) = self.compute_draw_coordinates(x, y)
         x_target = np.clip(x_target, self.border, self.target_width - self.border)
         y_target = np.clip(y_target, self.border, self.target_height - self.border)
 
