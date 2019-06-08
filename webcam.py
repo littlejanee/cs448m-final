@@ -39,11 +39,22 @@ sat_high = 255
 value_low = 100
 value_high = 200
 
+# frame1
+    # red: [177 230 154]
+    # skin: [4 96 152]
+    # blue: [105 140 178]
+
+# frame3
+    # red: [178 220 115] [179 226 113]
+    # skin: [4 100 143]
+    # blue: [105 169 152]
+    # machine blue: [116 188 46]
+
 boundaries = [
-    ([25, sat_low, value_low], [65, sat_high, value_high]), # yellow
-    ([95, sat_low, value_low], [120, sat_high, value_high]), # green
-    ([130, sat_low, value_low], [155, sat_high, value_high]), # blue
-    ([230, sat_low, value_low], [300, sat_high, value_high]), # red
+    ([15, sat_low, value_low], [45, sat_high, value_high]), # yellow
+    ([50, sat_low, value_low], [85, sat_high, value_high]), # green
+    ([90, 100, 120], [130, 255, 255]), # blue
+    ([140, 160, 60], [255, 255, 255]), # red
 ]
 
 COLOR_YELLOW = 0
@@ -61,12 +72,12 @@ def find_marker_for_id(frame, marker_id):
     lower = np.array(boundaries[marker_id][0])
     upper = np.array(boundaries[marker_id][1])
 
-    lower[0] = int(lower[0] / 360 * 255.)
-    upper[0] = int(upper[0] / 360 * 255.) # maybe ceil/floor and clip?
+    # lower[0] = int(lower[0] / 360 * 255.)
+    # upper[0] = int(upper[0] / 360 * 255.) # maybe ceil/floor and clip?
 
     # print (lower)
-    # print ('hsv[100][100]')
-    # print (hsv[100][100])
+    frame_fixed_resize = cv2.resize(frame_fixed, (int(1920/4), int(1080/4)))
+    hsv_resize = cv2.cvtColor(frame_fixed_resize, cv2.COLOR_BGR2HSV)
 
     hue_color = cv2.inRange(hsv, lower, upper)
     hue_color = cv2.erode(hue_color, None, iterations=2)
@@ -75,8 +86,10 @@ def find_marker_for_id(frame, marker_id):
     frame_fixed_color = cv2.bitwise_and(frame_fixed, frame_fixed, mask = hue_color)
 
     if DEBUG:
-        cv2.imshow('hue_color', hue_color)
-        cv2.imshow('frame_fixed', np.hstack([frame_fixed, frame_fixed_color]))
+        # cv2.imshow('hue_color', hue_color)
+        frame_fixed_resize = cv2.resize(frame_fixed, (int(1920/4), int(1080/4)))
+        frame_fixed_color_resize = cv2.resize(frame_fixed_color, (int(1920/4), int(1080/4)))
+        cv2.imshow('frame_fixed', np.hstack([frame_fixed_resize, frame_fixed_color_resize]))
         cv2.waitKey(0)
 
     # find center
@@ -114,9 +127,18 @@ def start_thread(f):
 
 def main(cam_idx):
     if DEBUG:
-        frame = cv2.imread("data/color-calib-2.png", cv2.IMREAD_COLOR)
-        frame_resize = cv2.resize(frame, (int(1920/2), int(1080/2)))
-        find_marker_for_id(frame_resize, 3) # 3 = red, 2 = blue
+        frame1 = cv2.imread("data/color-calib-1.png", cv2.IMREAD_COLOR)
+        frame2 = cv2.imread("data/color-calib-2.png", cv2.IMREAD_COLOR)
+        frame3 = cv2.imread("data/color-calib-3.png", cv2.IMREAD_COLOR)
+        frame4 = cv2.imread("data/color-calib-4.png", cv2.IMREAD_COLOR)
+        find_marker_for_id(frame1, COLOR_BLUE)
+        find_marker_for_id(frame1, COLOR_RED)
+        find_marker_for_id(frame2, COLOR_BLUE)
+        find_marker_for_id(frame2, COLOR_RED)
+        find_marker_for_id(frame3, COLOR_BLUE)
+        find_marker_for_id(frame3, COLOR_RED)
+        find_marker_for_id(frame4, COLOR_BLUE)
+        find_marker_for_id(frame4, COLOR_RED)
         if cv2.waitKey(1) == 27:
             cv2.destroyAllWindows()
 
