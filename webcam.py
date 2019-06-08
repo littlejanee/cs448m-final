@@ -23,7 +23,7 @@ client_x = int(1920 / 2 - client_width / 2)
 client_height = 1000
 client_y  = int(1080 / 2 - client_height / 2)
 
-target_width = 11.0
+target_width = 11.8
 target_height = 8.5
 
 border = 1.5
@@ -74,10 +74,10 @@ def find_marker_for_id(frame, marker_id):
 
     frame_fixed_color = cv2.bitwise_and(frame_fixed, frame_fixed, mask = hue_color)
 
-    if DEBUG:
-        cv2.imshow('hue_color', hue_color)
-        cv2.imshow('frame_fixed', np.hstack([frame_fixed, frame_fixed_color]))
-        cv2.waitKey(0)
+    # if DEBUG:
+    #     cv2.imshow('hue_color', hue_color)
+    #     cv2.imshow('frame_fixed', np.hstack([frame_fixed, frame_fixed_color]))
+    #     cv2.waitKey(0)
 
     # find center
     cnts, _ = cv2.findContours(hue_color, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -149,6 +149,12 @@ def main(cam_idx):
     path_buffer = Queue()
     device_lock = Lock()
 
+    def project_draw_to_bot(draw_point):
+        return (
+            draw_point[0] - (target_width - draw_point[0]) * 0.02,
+            draw_point[1] - (target_height - draw_point[1]) * .1
+        )
+
     # initialize plotter
     if not DRY_RUN:
         p = PlotterAxi(w=client_width, h=client_height)
@@ -157,7 +163,7 @@ def main(cam_idx):
             with device_lock:
                 p.device.wait()
                 p.up()
-                #p.move(0, 0)
+                p.move(0.5, 0.5)
                 p.device.wait()
                 sp.check_call(['axi', 'off'])
 
@@ -252,8 +258,8 @@ def main(cam_idx):
         cv2.line(camera_canvas, (0, client_y + client_height), (frame_width, client_y + client_height), (255, 255, 0), 3)
 
         def paper_to_pixel(p):
-            return (int(p[0] / target_width * frame_width),
-                    int(p[1] / target_height * frame_height))
+            return (int(p[0] / target_width * client_width + client_x),
+                    int(p[1] / target_height * client_height + client_y))
 
         if raw_point is not None and draw_point is not None:
             def raw_to_pixel(p):
@@ -284,8 +290,20 @@ def main(cam_idx):
                 -1)
 
         if pen_point is not None:
-            cv2.circle(fixed_canvas, paper_to_pixel(pen_point), 20,
+            px, py = paper_to_pixel(pen_point)
+            cv2.circle(fixed_canvas, (px, py), 20,
                        (0, 255, 255), -1)
+            cv2.putText(fixed_canvas, "{:.2f}, {:.2f}".format(*pen_point),
+                        (px - 80, py+50), cv2.FONT_HERSHEY_SIMPLEX, 1.5,
+                        (0, 255, 255), 5)
+
+            bot_point = project_draw_to_bot(pen_point)
+            px, py = paper_to_pixel(bot_point)
+            cv2.circle(fixed_canvas, (px, py), 20,
+                       (0, 255, 0), -1)
+            cv2.putText(fixed_canvas, "{:.2f}, {:.2f}".format(*bot_point),
+                        (px - 80, py-50), cv2.FONT_HERSHEY_SIMPLEX, 1.5,
+                        (0, 255, 0), 5)
 
         canvas_resize = cv2.resize(
             canvas, (1920, int(canvas.shape[0] * 1920 / canvas.shape[1])))
@@ -321,11 +339,19 @@ def main(cam_idx):
         pen_point = None
         if axi_raw_point is not None:
             axi_draw_point = drawing.compute_draw_coordinates(*axi_raw_point)
-            camera_pos = np.array([
-                target_width / 2, target_height/ 2 , camera_height])
+            cx = target_width / 2
+            cy = target_height / 2
+            camera_pos = np.array([cx, cy, camera_height])
             draw_pos = np.array([axi_draw_point[0], axi_draw_point[1], 0])
             pen_point = \
                 draw_pos  + (camera_pos - draw_pos) / camera_height * pen_height
+
+            # # Push x closer to middle
+            pen_point[0] = cx + (pen_point[0] - cx) * 1.15
+
+            # # Increase y
+            pen_point[1] += 0.2
+
             pen_point = (pen_point[0], pen_point[1])
             pen_history.shift(pen_point)
 
