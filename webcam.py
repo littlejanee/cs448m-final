@@ -13,9 +13,9 @@ import subprocess as sp
 import pickle
 
 
-DRY_RUN = True
+DRY_RUN = False
 
-DEBUG = True
+DEBUG = False
 
 client_width = 1350#1920
 client_x = int(1920 / 2 - client_width / 2)
@@ -136,19 +136,24 @@ def main(cam_idx):
         frame3 = cv2.imread("data/color-calib-3.png", cv2.IMREAD_COLOR)
         frame4 = cv2.imread("data/color-calib-4.png", cv2.IMREAD_COLOR) # red, blue, yellow
         frame5 = cv2.imread("data/color-calib-5.png", cv2.IMREAD_COLOR) # red, blue, yellow, green
+        frame6 = cv2.imread("data/color-calib-6.png", cv2.IMREAD_COLOR) # all + pens
         # find_marker_for_id(frame1, COLOR_BLUE)
         # find_marker_for_id(frame1, COLOR_RED)
         # find_marker_for_id(frame2, COLOR_BLUE)
         # find_marker_for_id(frame2, COLOR_RED)
         # find_marker_for_id(frame3, COLOR_BLUE)
         # find_marker_for_id(frame3, COLOR_RED)
-        find_marker_for_id(frame4, COLOR_BLUE)
-        find_marker_for_id(frame4, COLOR_RED)
-        find_marker_for_id(frame4, COLOR_YELLOW)
-        find_marker_for_id(frame5, COLOR_BLUE)
-        find_marker_for_id(frame5, COLOR_RED)
-        find_marker_for_id(frame5, COLOR_YELLOW)
-        find_marker_for_id(frame5, COLOR_GREEN)
+        # find_marker_for_id(frame4, COLOR_BLUE)
+        # find_marker_for_id(frame4, COLOR_RED)
+        # find_marker_for_id(frame4, COLOR_YELLOW)
+        # find_marker_for_id(frame5, COLOR_BLUE)
+        # find_marker_for_id(frame5, COLOR_RED)
+        # find_marker_for_id(frame5, COLOR_YELLOW)
+        # find_marker_for_id(frame5, COLOR_GREEN)
+        find_marker_for_id(frame6, COLOR_BLUE)
+        find_marker_for_id(frame6, COLOR_RED)
+        find_marker_for_id(frame6, COLOR_YELLOW)
+        find_marker_for_id(frame6, COLOR_GREEN)
         if cv2.waitKey(1) == 27:
             cv2.destroyAllWindows()
 
@@ -240,10 +245,14 @@ def main(cam_idx):
                         for x, y in recorded_path
                     ]
                 elif inp == 'a':
-                    path = [
-                        (x + p.x, y + p.y)
-                        for x, y in recorded_path
-                    ]
+                    translate = (p.x, p.y)
+                    rotate = 0
+                    scale = 1
+                    path = drawing.apply_transform(recorded_path, translate, rotate, scale)
+                    # path = [ 
+                    #     (x + p.x, y + p.y)
+                    #     for x, y in recorded_path
+                    # ]
                     print('Applying path')
                     p.path(path)
                 elif inp == 'm':

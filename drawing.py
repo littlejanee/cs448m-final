@@ -55,3 +55,15 @@ class Drawing:
         y_target = np.clip(y_target, self.border, self.target_height - self.border)
 
         return (x_target, y_target) # x_target, y_target is in target (axi) coordinates
+
+    def apply_transform(self, path, translate, rotate, scale):
+        transform_path = [ 
+            (x + translate[0], y + translate[1])
+            for x, y in path
+        ]
+
+        # apply style (?)
+
+        # translate such that first point is current location
+
+        return transform_path
