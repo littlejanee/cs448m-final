@@ -13,8 +13,11 @@ import subprocess as sp
 import pickle
 from spline import CatmullRomSpline
 from timeit import default_timer as now
+from enum import Enum
+from websocket_server import WebsocketServer
+import json
 
-DRY_RUN = False
+DRY_RUN = True
 
 DEBUG = False
 
@@ -71,10 +74,25 @@ boundaries = [
     ([140, 160, 60], [255, sat_high, value_high]), # red
 ]
 
+server = WebsocketServer(9001)
+
 COLOR_YELLOW = 0
 COLOR_GREEN = 1
 COLOR_BLUE = 2
 COLOR_RED = 3
+
+def point_dist(p1, p2):
+    return np.sqrt(np.square(p1[0] - p2[0]) + np.square(p1[1] - p2[1]))
+
+def point_add(p1, p2):
+    return (p1[0] + p2[0], p1[1] + p2[1])
+
+def path_smooth(path):
+    new_path = path[:1]
+    for i in range(len(path)-4):
+        new_path.extend(CatmullRomSpline(*path[i:i+4], nPoints=8))
+    new_path.append(path[-1])
+    return new_path
 
 # returns x, y (1920, 1080) or None if can't find
 def find_marker_for_id(frame, marker_id):
@@ -198,13 +216,13 @@ def main(cam_idx):
 
     # initialize plotter
     if not DRY_RUN:
-        p = PlotterAxi(w=client_width, h=client_height, border=border)
+        p = PlotterAxi(w=client_width-0.5, h=client_height-0.5, border=border)
 
         def disable_device():
             with device_lock:
                 p.device.wait()
                 p.up()
-                if not device_reset:
+                if not actions['motors'].device_reset:
                     p.move(0, 0)
                 p.device.wait()
                 sp.check_call(['axi', 'off'])
@@ -231,73 +249,146 @@ def main(cam_idx):
 
         start_thread(send_commands)
 
-    path_start = None
-    recorded_path = []
-    recording = False
-    device_reset = False
 
-    def recv_commands():
-        nonlocal recording
-        nonlocal recorded_path
-        nonlocal device_reset
+    class RecordTemplateAction:
+        def __init__(self):
+            self.template = []
+            self.start_point = None
+            self.recording = False
 
-        while True:
-            inp = input().strip()
-            with device_lock:
-                if inp == 'i':
-                    p.up()
-                elif inp == 'o':
-                    p.down()
-                elif inp == 'r':
-                    print('Start recording')
-                    recording = True
-                    recorded_path = []
-                    path_start = draw_history.last()
-                elif inp == 'f':
-                    print('Finish recording')
-                    recording = False
-                    (lx, ly) = path_start
-                    recorded_path = [
+        def on_keypress(self, inp):
+            if inp == 'r':
+                if not self.recording:
+                    print('Recording template')
+                    self.template = []
+                    self.start_point = draw_history.last()
+                    self.recording = True
+                else:
+                    print('Finish template')
+                    self.recording = False
+                    (lx, ly) = self.start_point
+                    self.template = [
                         (x - lx, y - ly)
-                        for x, y in recorded_path
+                        for x, y in self.template
                     ]
-                elif inp == 'a':
-                    translate = (p.x, p.y)
+
+        def on_draw(self, point):
+            if self.recording:
+                self.template.append(point)
+
+    class ApplyTemplateAction:
+        def __init__(self):
+            self.path = []
+            self.recording = False
+
+        def on_keypress(self, inp):
+            if inp == 'a':
+                if not self.recording:
+                    print('Recording application path')
+                    self.path = []
+                    self.recording = True
+                else:
+                    print('Finish application path')
+                    translate = (0, 0)#(p.x, p.y)
                     rotate = 0
                     scale = 1
-                    path = drawing.apply_transform(recorded_path, translate, rotate, scale)
-                    # path = [ 
-                    #     (x + p.x, y + p.y)
-                    #     for x, y in recorded_path
-                    # ]
+                    template_path = path_smooth(drawing.apply_transform(
+                        actions['record_template'].template,
+                        translate, rotate, scale))
+
+                    diameter = max([
+                        point_dist(p1, p2)
+                        for p1 in template_path
+                        for p2 in template_path
+                    ])
+
+                    draw_points = self.path[:1]
+                    i = 1
+                    while i < len(self.path):
+                        if point_dist(self.path[i], draw_points[-1]) >= diameter/2:
+                            draw_points.append(self.path[i])
+                        i += 1
+
                     print('Applying path')
-                    p.path(path)
-                elif inp == 'm':
-                    # print('predicted',
-                    #       pen_history.last(),
-                    #       'actual',
-                    #       p.device.read_position())
+                    for origin in draw_points:
+                        with device_lock:
+                            p.move(*point_add(template_path[0], origin))
+                            p.down()
+                            p.path([
+                                point_add(p, origin)
+                                for p in template_path
+                            ])
+                            p.up()
+
+        def on_draw(self, point):
+            self.path.append(point)
+
+
+    class MotorAction:
+        def __init__(self):
+            self.device_reset = False
+
+        def on_keypress(self, inp):
+            if inp == 'm':
+                # print('predicted',
+                #       pen_history.last(),
+                #       'actual',
+                #       p.device.read_position())
+                with device_lock:
                     p.up()
                     p.device.disable_motors()
                     print('Disabled motors')
-                elif inp == 'n':
+            elif inp == 'n':
+                with device_lock:
                     p.device.enable_motors()
                     p.down()
                     x, y = pen_history.last()
                     p.x = x
                     p.y = y
                     print('Enabled motors at ({}, {})'.format(x, y))
-                    device_reset = True
-                else:
-                    try:
-                        print(inp)
-                        n = int(inp)
-                        drawing.set_style(n)
-                        print('Set style to {}'.format(n))
-                    except ValueError:
-                        pass
+                    self.device_reset = True
 
-    start_thread(recv_commands)
+        def on_draw(self, point):
+            pass
+
+    actions = {
+        'record_template': RecordTemplateAction(),
+        'apply_template': ApplyTemplateAction(),
+        'motors': MotorAction(),
+    }
+
+    def recv_keyboard():
+        while True:
+            inp = input().strip()
+            if inp == 'i':
+                with device_lock:
+                    p.up()
+            elif inp == 'o':
+                with device_lock:
+                    p.down()
+            else:
+                try:
+                    print(inp)
+                    n = int(inp)
+                    drawing.set_style(n)
+                    print('Set style to {}'.format(n))
+                except ValueError:
+                    pass
+
+                for a in actions.values():
+                    a.on_keypress(inp)
+
+    start_thread(recv_keyboard)
+
+    def recv_websocket(client, server, message):
+        data = json.loads(message)
+        print('websocket', data)
+
+    def websocket_server():
+        server.set_fn_message_received(recv_websocket)
+        server.run_forever()
+
+    start_thread(websocket_server)
 
     def draw_debug_info(frame, undistorted_frame, sat_img,
                         raw_point, draw_point, pen_point):
@@ -333,7 +424,8 @@ def main(cam_idx):
             # Draw draw coordinates
             draw_canvas = canvas[frame_height:, :frame_width, :]
 
-            draw_color = (0, 255, 0) if recording else (255, 255, 0)
+            draw_color = (0, 255, 0) if actions['record_template'].recording \
+                else (255, 255, 0)
             if draw_history.last() is not None:
                 cv2.line(
                     draw_canvas,
@@ -437,8 +529,8 @@ def main(cam_idx):
                 draw_point = drawing.compute_draw_coordinates(*raw_point)
                 styled_point = drawing.apply_style(draw_point)
 
-                if recording:
-                    recorded_path.append(draw_point)
+                for a in actions.values():
+                    a.on_draw(draw_point)
 
                 # if len(draw_history.pts) < 4:
                 #     path_buffer.put(styled_point)

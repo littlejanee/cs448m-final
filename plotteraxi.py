@@ -47,7 +47,6 @@ class PlotterAxi:
         for i, (x, y) in enumerate(path):
             if not self.inbounds(x, y):
                 print('Warning: path to bad position ({}, {})'.format(x, y))
-                return False
             path[i] = self.clip(x, y)
 
         self.device.run_path([(self.x, self.y)] + path)
