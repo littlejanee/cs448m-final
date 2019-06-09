@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" />
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <script src="https://unpkg.com/react@16/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@16/umd/react-dom.development.js" crossorigin></script>
+    <style>
+     .template { width: 300px; height: 300px; border: 1px solid black; display: block; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div id="root"></div>
+    </div>
+    <script type="text/babel">
+     let ws = new WebSocket('ws://localhost:9001/');
+     let last_cb = null;
+     ws.onmessage = function(event) {
+       last_cb(JSON.parse(event.data));
+     }
+
+     let send = (msg, cb) => {
+       ws.send(JSON.stringify(msg));
+       last_cb = cb;
+     };
+
+     class RecordTemplate extends React.Component {
+       state = {recording: false, template: []}
+
+       constructor(props) {
+         super(props);
+         this.canvas = React.createRef();
+       }
+
+       onClick = () => {
+         this.setState({recording: !this.state.recording});
+         send(
+           {'type': 'record_template', 'value': this.state.recording},
+           (val) => {
+             if (!this.state.recording) {
+               this.setState({template: val});
+             }
+           });
+       }
+
+       componentDidUpdate() {
+         let c = this.canvas.current;
+         let ctx = c.getContext('2d');
+         let w = c.width;
+         let h = c.height;
+
+         let cx = w / 2;
+         let cy = h / 2;
+
+         let tw = 8;
+         let th = 8;
+
+         ctx.clearRect(0, 0, w, h);
+         if (this.state.template.length == 0) {
+           return;
+         }
+
+         ctx.beginPath();
+
+         let path = this.state.template.map(([x, y]) => {
+           x = x / tw * w;
+           y = y / th * h;
+
+           x += cx;
+           y += cy;
+
+           return [Math.round(x), Math.round(y)];
+         });
+
+         ctx.moveTo(path[0][0], path[0][1]);
+
+         path.forEach(([x, y]) => {
+           ctx.lineTo(x, y);
+         });
+
+         ctx.closePath();
+         ctx.stroke();
+       }
+
+       render() {
+         return <div>
+           <canvas ref={this.canvas} className='template'></canvas>
+           <button onClick={this.onClick}>
+             {this.state.recording ? 'Stop recording template' : 'Record template'}
+           </button>
+         </div>
+       }
+     }
+
+     class ApplyTemplate extends React.Component {
+       state = {recording: false}
+
+       onClick = () => {
+         this.setState({recording: !this.state.recording});
+         send({'type': 'apply_template', 'value': this.state.recording});
+       }
+
+       render() {
+         return <button onClick={this.onClick}>
+           {this.state.recording ? 'Stop recording path' : 'Apply template on path'}
+         </button>
+       }
+     }
+
+     class DisableMotors extends React.Component {
+       state = {disabled: false}
+
+       onClick = () => {
+         this.setState({disabled: !this.state.disabled});
+         send({'type': 'motors', 'value': this.state.disabled});
+       }
+
+       render() {
+         return <button onClick={this.onClick}>
+           {this.state.disabled ? 'Enable motors' : 'Disable motors'}
+         </button>
+       }
+     }
+
+     class App extends React.Component {
+       render() {
+         return <div>
+           <h1>Interactive plotter</h1>
+           <div>
+             <h2>Templates</h2>
+             <RecordTemplate />
+             <ApplyTemplate />
+           </div>
+           <div>
+             <h2>Motors</h2>
+             <DisableMotors />
+           </div>
+         </div>;
+       }
+     }
+
+     ReactDOM.render(
+       <App />,
+       document.getElementById('root'));
+    </script>
+  </body>
+</html>
