@@ -257,21 +257,21 @@ def main(cam_idx):
             self.start_point = None
             self.recording = False
 
-        def on_keypress(self, inp):
-            if inp == 'r':
-                if not self.recording:
-                    print('Recording template')
-                    self.template = []
-                    self.start_point = draw_history.last()
-                    self.recording = True
-                else:
-                    print('Finish template')
-                    self.recording = False
-                    (lx, ly) = self.start_point
-                    self.template = [
-                        (x - lx, y - ly)
-                        for x, y in self.template
-                    ]
+        def trigger(self):
+            if not self.recording:
+                print('Recording template')
+                self.template = []
+                self.start_point = draw_history.last()
+                self.recording = True
+            else:
+                print('Finish template')
+                self.recording = False
+                (lx, ly) = self.start_point
+                self.template = [
+                    (x - lx, y - ly)
+                    for x, y in self.template
+                ]
+                return self.template
 
         def on_draw(self, point):
             if self.recording:
@@ -282,10 +282,47 @@ def main(cam_idx):
             self.path = []
             self.recording = False
 
-        def apply_template(self, p, is_path):
+        def apply_template(self, p, translate, rotate, scale):
+            # transformed_path = drawing.apply_transform(
+            #     # actions['record_template'].template,
+            #     # translate, rotate, scale)
+            # template_path = path_smooth(transformed_path)
+            template_path = actions['record_template'].template
+
+            print('Applying template')
+            origin = (p.x, p.y)
+            print(origin)
+            with device_lock:
+                p.move(*point_add(template_path[0], origin))
+                p.down()
+                p.path([
+                    point_add(p, origin)
+                    for p in template_path
+                ])
+                p.up()
+
+                # update template with transform
+                # actions['record_template'].template = transformed_path
+                # transformed_path = drawing.apply_transform(
+                #     actions['record_template'].template,
+                #     translate, rotate, scale)
+                # template_path = path_smooth(transformed_path)
+
+        def trigger(self):
             translate = (0, 0)#(p.x, p.y)
-            rotate = math.pi/3#0
-            scale = .8
+            rotate = 0#math.pi/3#0
+            scale = 1#.8
+            self.apply_template(p, translate, rotate, scale)
+
+        def on_draw(self, point):
+            self.path.append(point)
+
+    class ApplyTemplatePathAction:
+        def __init__(self):
+            self.path = []
+            self.recording = False
+
+        def apply_template(self, p, translate, rotate, scale):
             transformed_path = drawing.apply_transform(
                 actions['record_template'].template,
                 translate, rotate, scale)
@@ -297,16 +334,14 @@ def main(cam_idx):
                 for p2 in template_path
             ])
 
-            draw_points = [(p.x, p.y)]
-            if is_path:
-                draw_points = self.path[:1]
-                i = 1
-                while i < len(self.path):
-                    if point_dist(self.path[i], draw_points[-1]) >= diameter/2:
-                        draw_points.append(self.path[i])
-                    i += 1
+            draw_points = self.path[:1]
+            i = 1
+            while i < len(self.path):
+                if point_dist(self.path[i], draw_points[-1]) >= diameter/2:
+                    draw_points.append(self.path[i])
+                i += 1
 
-            print('Applying path')
+            print('Applying template path')
             for origin in draw_points:
                 with device_lock:
                     p.move(*point_add(template_path[0], origin))
@@ -324,25 +359,17 @@ def main(cam_idx):
                         translate, rotate, scale)
                     template_path = path_smooth(transformed_path)
 
-        def on_keypress(self, inp):
-            # apply_template = False
-            # is_path = False
-
-            if inp == 'a': # apply along path
-                if not self.recording:
-                    print('Recording application path')
-                    self.path = []
-                    self.recording = True
-                else:
-                    print('Finish application path')
-                    # apply_template = True
-                    # is_path = True
-                    self.apply_template(p, True)
-            if inp == 's': # stamp in place
-                # self.path = []
-                # apply_template = True
-                self.apply_template(p, False)
-                    
+        def trigger(self):
+            if not self.recording:
+                print('Recording application path')
+                self.path = []
+                self.recording = True
+            else:
+                print('Finish application path')
+                translate = (0, 0)#(p.x, p.y)
+                rotate = math.pi/3#0
+                scale = .8
+                self.apply_template(p, translate, rotate, scale)
 
         def on_draw(self, point):
             self.path.append(point)
@@ -351,9 +378,10 @@ def main(cam_idx):
     class MotorAction:
         def __init__(self):
             self.device_reset = False
+            self.disabled = False
 
-        def on_keypress(self, inp):
-            if inp == 'm':
+        def trigger(self):
+            if not self.disabled:
                 # print('predicted',
                 #       pen_history.last(),
                 #       'actual',
@@ -362,7 +390,7 @@ def main(cam_idx):
                     p.up()
                     p.device.disable_motors()
                     print('Disabled motors')
-            elif inp == 'n':
+            else:
                 with device_lock:
                     p.device.enable_motors()
                     p.down()
@@ -371,6 +399,7 @@ def main(cam_idx):
                     p.y = y
                     print('Enabled motors at ({}, {})'.format(x, y))
                     self.device_reset = True
+                    self.disabled = False
 
         def on_draw(self, point):
             pass
@@ -378,6 +407,7 @@ def main(cam_idx):
     actions = {
         'record_template': RecordTemplateAction(),
         'apply_template': ApplyTemplateAction(),
+        'apply_template_path': ApplyTemplatePathAction(),
         'motors': MotorAction(),
     }
 
@@ -406,7 +436,9 @@ def main(cam_idx):
 
     def recv_websocket(client, server, message):
         data = json.loads(message)
-        print('websocket', data)
+        server.send_message(
+            client,
+            json.dumps(actions[data['type']].trigger()))
 
     def websocket_server():
         server.set_fn_message_received(recv_websocket)
