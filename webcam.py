@@ -440,18 +440,18 @@ def main(cam_idx):
                 if recording:
                     recorded_path.append(draw_point)
 
-                if len(draw_history.pts) < 4:
-                    path_buffer.put(styled_point)
-                    pass
-                else:
-                    interped = CatmullRomSpline(
-                        *(styled_history.pts[-3:] + [styled_point]),
-                        nPoints=4)
-                    if np.any(np.isnan(interped)):
-                        path_buffer.put(styled_history.pts[-1])
-                    else:
-                        for pt in interped:
-                            path_buffer.put(pt)
+                # if len(draw_history.pts) < 4:
+                #     path_buffer.put(styled_point)
+                #     pass
+                # else:
+                #     interped = CatmullRomSpline(
+                #         *(styled_history.pts[-3:] + [styled_point]),
+                #         nPoints=4)
+                #     if np.any(np.isnan(interped)):
+                #         path_buffer.put(styled_history.pts[-1])
+                #     else:
+                #         for pt in interped:
+                #             path_buffer.put(pt)
 
         start = now()
         draw_debug_info(
