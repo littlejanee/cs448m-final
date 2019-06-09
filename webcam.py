@@ -16,8 +16,9 @@ from timeit import default_timer as now
 from enum import Enum
 from websocket_server import WebsocketServer
 import json
+import math
 
-DRY_RUN = True
+DRY_RUN = False
 
 DEBUG = False
 
@@ -281,44 +282,67 @@ def main(cam_idx):
             self.path = []
             self.recording = False
 
+        def apply_template(self, p, is_path):
+            translate = (0, 0)#(p.x, p.y)
+            rotate = math.pi/3#0
+            scale = .8
+            transformed_path = drawing.apply_transform(
+                actions['record_template'].template,
+                translate, rotate, scale)
+            template_path = path_smooth(transformed_path)
+
+            diameter = max([
+                point_dist(p1, p2)
+                for p1 in template_path
+                for p2 in template_path
+            ])
+
+            draw_points = [(p.x, p.y)]
+            if is_path:
+                draw_points = self.path[:1]
+                i = 1
+                while i < len(self.path):
+                    if point_dist(self.path[i], draw_points[-1]) >= diameter/2:
+                        draw_points.append(self.path[i])
+                    i += 1
+
+            print('Applying path')
+            for origin in draw_points:
+                with device_lock:
+                    p.move(*point_add(template_path[0], origin))
+                    p.down()
+                    p.path([
+                        point_add(p, origin)
+                        for p in template_path
+                    ])
+                    p.up()
+
+                    # update template with transform
+                    actions['record_template'].template = transformed_path
+                    transformed_path = drawing.apply_transform(
+                        actions['record_template'].template,
+                        translate, rotate, scale)
+                    template_path = path_smooth(transformed_path)
+
         def on_keypress(self, inp):
-            if inp == 'a':
+            # apply_template = False
+            # is_path = False
+
+            if inp == 'a': # apply along path
                 if not self.recording:
                     print('Recording application path')
                     self.path = []
                     self.recording = True
                 else:
                     print('Finish application path')
-                    translate = (0, 0)#(p.x, p.y)
-                    rotate = 0
-                    scale = 1
-                    template_path = path_smooth(drawing.apply_transform(
-                        actions['record_template'].template,
-                        translate, rotate, scale))
-
-                    diameter = max([
-                        point_dist(p1, p2)
-                        for p1 in template_path
-                        for p2 in template_path
-                    ])
-
-                    draw_points = self.path[:1]
-                    i = 1
-                    while i < len(self.path):
-                        if point_dist(self.path[i], draw_points[-1]) >= diameter/2:
-                            draw_points.append(self.path[i])
-                        i += 1
-
-                    print('Applying path')
-                    for origin in draw_points:
-                        with device_lock:
-                            p.move(*point_add(template_path[0], origin))
-                            p.down()
-                            p.path([
-                                point_add(p, origin)
-                                for p in template_path
-                            ])
-                            p.up()
+                    # apply_template = True
+                    # is_path = True
+                    self.apply_template(p, True)
+            if inp == 's': # stamp in place
+                # self.path = []
+                # apply_template = True
+                self.apply_template(p, False)
+                    
 
         def on_draw(self, point):
             self.path.append(point)
