@@ -11,8 +11,8 @@ class DefaultStyle(Style):
 class MirrorStyle(Style):
     def transform(self, point):
         (x, y) = point
-        x_distance = self.drawing.client_width / 2 - x
-        x_mod = self.drawing.client_width / 2 + x_distance
+        x_distance = self.drawing.target_width / 2 - x
+        x_mod = self.drawing.target_width / 2 + x_distance
         y_mod = y
         return (x_mod, y_mod)
 
