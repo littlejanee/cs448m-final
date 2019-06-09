@@ -283,10 +283,10 @@ def main(cam_idx):
             self.recording = False
 
         def apply_template(self, p, translate, rotate, scale):
-            # transformed_path = drawing.apply_transform(
-            #     # actions['record_template'].template,
-            #     # translate, rotate, scale)
-            # template_path = path_smooth(transformed_path)
+            transformed_path = drawing.apply_transform(
+                actions['record_template'].template,
+                translate, rotate, scale)
+            template_path = path_smooth(transformed_path)
             template_path = actions['record_template'].template
 
             print('Applying template')
@@ -302,16 +302,16 @@ def main(cam_idx):
                 p.up()
 
                 # update template with transform
-                # actions['record_template'].template = transformed_path
-                # transformed_path = drawing.apply_transform(
-                #     actions['record_template'].template,
-                #     translate, rotate, scale)
-                # template_path = path_smooth(transformed_path)
+                actions['record_template'].template = transformed_path
+                transformed_path = drawing.apply_transform(
+                    actions['record_template'].template,
+                    translate, rotate, scale)
+                template_path = path_smooth(transformed_path)
 
         def trigger(self):
             translate = (0, 0)#(p.x, p.y)
-            rotate = 0#math.pi/3#0
-            scale = 1#.8
+            rotate = math.pi/3#0
+            scale = .8
             self.apply_template(p, translate, rotate, scale)
 
         def on_draw(self, point):
@@ -390,6 +390,7 @@ def main(cam_idx):
                     p.up()
                     p.device.disable_motors()
                     print('Disabled motors')
+                    self.disabled = True
             else:
                 with device_lock:
                     p.device.enable_motors()

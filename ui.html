@@ -103,6 +103,21 @@
 
        render() {
          return <button onClick={this.onClick}>
+           {'Apply template'}
+         </button>
+       }
+     }
+
+     class ApplyTemplatePath extends React.Component {
+       state = {recording: false}
+
+       onClick = () => {
+         this.setState({recording: !this.state.recording});
+         send({'type': 'apply_template_path', 'value': this.state.recording});
+       }
+
+       render() {
+         return <button onClick={this.onClick}>
            {this.state.recording ? 'Stop recording path' : 'Apply template on path'}
          </button>
        }
@@ -131,6 +146,7 @@
              <h2>Templates</h2>
              <RecordTemplate />
              <ApplyTemplate />
+             <ApplyTemplatePath />
            </div>
            <div>
              <h2>Motors</h2>
