@@ -11,7 +11,8 @@ from queue import Queue
 from threading import Thread, Lock
 import subprocess as sp
 import pickle
-
+from spline import CatmullRomSpline
+from timeit import default_timer as now
 
 DRY_RUN = False
 
@@ -23,14 +24,16 @@ client_x = int(1920 / 2 - client_width / 2)
 client_height = 1000
 client_y  = int(1080 / 2 - client_height / 2)
 
-target_width = 11.8
+target_width = 11.5
 target_height = 8.5
 
-border = 1.5
+border = 0.5
 
 intrinsics = pickle.load(open('data/intrinsics.pkl', 'rb'))
 camera_height = 13
 pen_height = 7
+
+#camera_sample_rate = 1/24
 
 newcameramtx = None
 
@@ -176,10 +179,11 @@ def main(cam_idx):
 
     raw_history = History()
     draw_history = History()
+    styled_history = History()
     pen_history = History()
 
     drawing = Drawing()
-    drawing.set_style(0)
+    drawing.set_style(1)
     drawing.set_client(client_width, client_height)
     drawing.set_target(target_width, target_height, border)
 
@@ -194,24 +198,35 @@ def main(cam_idx):
 
     # initialize plotter
     if not DRY_RUN:
-        p = PlotterAxi(w=client_width, h=client_height)
+        p = PlotterAxi(w=client_width, h=client_height, border=border)
 
         def disable_device():
             with device_lock:
                 p.device.wait()
                 p.up()
-                p.move(0.5, 0.5)
+                if not device_reset:
+                    p.move(0, 0)
                 p.device.wait()
                 sp.check_call(['axi', 'off'])
 
         atexit.register(disable_device)
 
         def send_commands():
+            first_command = True
             while True:
-                path = [path_buffer.get() for _ in range(9)]
-                if path_buffer.qsize() > 4:
-                    path = path[::3]
+                if path_buffer.qsize() > 48:
+                    print('Queue is too large: {}'.format(path_buffer.qsize()))
+                    path = [path_buffer.get() for _ in range(48)][::3]
+                else:
+                    path = [path_buffer.get() for _ in range(12)]
+
+                path = [project_draw_to_bot(p) for p in path]
+
                 with device_lock:
+                    if first_command:
+                        p.move(*path[0])
+                        p.down()
+                        first_command = False
                     p.path(path)
 
         start_thread(send_commands)
@@ -219,10 +234,12 @@ def main(cam_idx):
     path_start = None
     recorded_path = []
     recording = False
+    device_reset = False
 
     def recv_commands():
         nonlocal recording
         nonlocal recorded_path
+        nonlocal device_reset
 
         while True:
             inp = input().strip()
@@ -270,6 +287,7 @@ def main(cam_idx):
                     p.x = x
                     p.y = y
                     print('Enabled motors at ({}, {})'.format(x, y))
+                    device_reset = True
                 else:
                     try:
                         print(inp)
@@ -281,8 +299,8 @@ def main(cam_idx):
 
     start_thread(recv_commands)
 
-    def draw_debug_info(frame, undistorted_frame, raw_point, draw_point,
-                        pen_point):
+    def draw_debug_info(frame, undistorted_frame, sat_img,
+                        raw_point, draw_point, pen_point):
         frame_canvas = canvas[:frame_height, frame_width:(frame_width*2), :]
         frame_canvas[:,:,:] = frame[::-1, ::-1, :]
 
@@ -351,14 +369,22 @@ def main(cam_idx):
         cv2.imshow('frame', canvas_resize)
         cv2.waitKey(30)
 
+    last_sample = now()
     while True:
+        # print('Total: {:.4f}'.format(now() - last_sample))
+        last_sample = now()
+        # if now() - last_sample < camera_sample_rate:
+        #     continue
+
         result, frame = cam.read()
         assert result
 
+        start = now()
         markers = {
             col: find_marker_for_id(frame.copy(), col)
             for col in [COLOR_BLUE, COLOR_RED]
         }
+        # print('Finding markers: {:.4f}'.format(now() - start))
 
         def project_raw(point):
             px, py = point
@@ -375,7 +401,11 @@ def main(cam_idx):
             if pt is not None:
                 markers[k] = (project_raw(pt), _1, _2)
 
-        axi_raw_point, undistorted_frame, sat_img = markers[COLOR_BLUE]
+        axi_raw_point, undistorted_frame, _ = markers[COLOR_BLUE]
+
+        sat_img = np.zeros(frame.shape)
+        for _1, _2, sat_img_col in markers.values():
+            sat_img[:, :, :] += sat_img_col
 
         pen_point = None
         if axi_raw_point is not None:
@@ -398,6 +428,7 @@ def main(cam_idx):
 
         raw_point, _, _ = markers[COLOR_RED]
         draw_point = None
+        styled_point = None
 
         if raw_point is not None:
             px, py = raw_point
@@ -408,19 +439,34 @@ def main(cam_idx):
 
                 if recording:
                     recorded_path.append(draw_point)
-                #path_buffer.put(styled_point)
 
+                if len(draw_history.pts) < 4:
+                    path_buffer.put(styled_point)
+                    pass
+                else:
+                    interped = CatmullRomSpline(
+                        *(styled_history.pts[-3:] + [styled_point]),
+                        nPoints=4)
+                    if np.any(np.isnan(interped)):
+                        path_buffer.put(styled_history.pts[-1])
+                    else:
+                        for pt in interped:
+                            path_buffer.put(pt)
+
+        start = now()
         draw_debug_info(
             frame,
             undistorted_frame,
+            sat_img,
             raw_point,
             draw_point,
             pen_point)
+        # print('Drawing debug info: {:.3f}'.format(now() - start))
 
         if raw_point is not None and draw_point is not None:
             raw_history.shift(raw_point)
             draw_history.shift(draw_point)
-
+            styled_history.shift(styled_point)
 
 if __name__ == "__main__":
     cam_idx = int(sys.argv[1]) if len(sys.argv) > 1 else 1
