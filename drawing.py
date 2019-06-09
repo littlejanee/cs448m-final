@@ -5,29 +5,53 @@ class Style:
         self.drawing = drawing
 
 class DefaultStyle(Style):
-    def transform(self, point):
+    def transform(self, point, vec):
         return point
 
 class MirrorStyle(Style):
-    def transform(self, point):
+    def transform(self, point, vec):
         (x, y) = point
         x_distance = self.drawing.target_width / 2 - x
         x_mod = self.drawing.target_width / 2 + x_distance
         y_mod = y
         return (x_mod, y_mod)
 
+class HeatmapStyle(Style):
+    def __init__(self, drawing):
+        Style.__init__(self, drawing)
+        self.pos = np.array([0, 0])
+
+    def transform(self, point, vec):
+        poi = np.array([self.drawing.target_width / 2, self.drawing.target_height / 2])
+        vec = np.array(vec)
+        target_point = self.pos + vec
+
+        dist = np.sqrt(np.sum(np.square(target_point - poi)))
+        vec = dist / 100 * (poi - target_point)
+        final_point = target_point  + vec
+
+        print('Current: {}, vector: {}, final: {}'.format(
+            self.pos, vec, final_point))
+
+        self.pos = final_point
+
+        return (final_point[0], final_point[1])
+
 class Drawing:
-    def __init__(self, style=0):
-        self.styles = [
-            DefaultStyle(self),
-            MirrorStyle(self)
-        ]
+    def __init__(self, p, pen_history, style=0):
+        self.p = p
+        self.pen_history = pen_history
         self.style = 0
         self.client_width = 0
         self.client_height = 0
         self.target_width = 0
         self.target_height = 0
         self.border = 0
+        self.styles = [
+            DefaultStyle(self),
+            MirrorStyle(self),
+            HeatmapStyle(self)
+        ]
 
     def set_style(self, style):
         self.style = style
@@ -41,8 +65,8 @@ class Drawing:
         self.target_height = target_height
         self.border = border
 
-    def apply_style(self, point):
-        return self.styles[self.style].transform(point)
+    def apply_style(self, point, vec):
+        return self.styles[self.style].transform(point, vec)
 
     def compute_draw_coordinates(self, x, y): # x,y is in client coordinates
         x_target = x * self.target_width / self.client_width
@@ -61,8 +85,8 @@ class Drawing:
 
         # scale
         ref_point = transform_path[0]
-        transform_path = [ 
-            ((x - ref_point[0]) * scale + ref_point[0], 
+        transform_path = [
+            ((x - ref_point[0]) * scale + ref_point[0],
              (y - ref_point[1]) * scale + ref_point[1])
             for x, y in transform_path
         ]
@@ -72,11 +96,11 @@ class Drawing:
         # rotate (in radians)
         c, s = np.cos(rotate), np.sin(rotate)
         rotation_matrix = np.matrix([[c, s], [-s, c]])
-        transform_m = [ 
+        transform_m = [
             np.dot(rotation_matrix, [x, y])
             for x, y in transform_path
         ]
-        transform_path = [ 
+        transform_path = [
             (m.item(0), m.item(1))
             for m in transform_m
         ]
@@ -90,8 +114,8 @@ class Drawing:
 
         # translate such that first point is (0,0)
         ref_point = transform_path[0]
-        transform_path = [ 
-            (x - ref_point[0], 
+        transform_path = [
+            (x - ref_point[0],
              y - ref_point[1])
             for x, y in transform_path
         ]
