@@ -86,8 +86,8 @@ class Drawing:
         # scale
         ref_point = transform_path[0]
         transform_path = [ 
-            (int((x - ref_point[0]) * scale + ref_point[0]), 
-             int((y - ref_point[1]) * scale + ref_point[1]))
+            (float(x - ref_point[0]) * scale + ref_point[0], 
+             float(y - ref_point[1]) * scale + ref_point[1])
             for x, y in transform_path
         ]
         # print('scale')

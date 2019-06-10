@@ -18,7 +18,7 @@ from websocket_server import WebsocketServer
 import json
 import math
 
-DRY_RUN = True
+DRY_RUN = False
 
 DEBUG = False
 
@@ -269,7 +269,7 @@ def main(cam_idx):
         start_thread(send_commands)
 
     drawing = Drawing(p, pen_history)
-    drawing.set_style(2)
+    drawing.set_style(1)
     drawing.set_client(client_width, client_height)
     drawing.set_target(target_width, target_height, border)
 
@@ -472,7 +472,7 @@ def main(cam_idx):
             actions['apply_template'].rotation = rotation
             actions['apply_template_path'].rotation = rotation
         if 'scale' in data:
-            scale = data['scale']
+            scale = float(data['scale'])
             print(scale)
             actions['apply_template'].scale = scale
             actions['apply_template_path'].scale = scale
