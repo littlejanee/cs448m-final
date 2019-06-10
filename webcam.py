@@ -18,7 +18,7 @@ from websocket_server import WebsocketServer
 import json
 import math
 
-DRY_RUN = False
+DRY_RUN = True
 
 DEBUG = False
 
@@ -36,6 +36,7 @@ border = 0.5
 intrinsics = pickle.load(open('data/intrinsics.pkl', 'rb'))
 camera_height = 13
 pen_height = 7
+marker_height = 3
 
 #camera_sample_rate = 1/24
 
@@ -94,6 +95,27 @@ def path_smooth(path):
         new_path.extend(CatmullRomSpline(*path[i:i+4], nPoints=8))
     new_path.append(path[-1])
     return new_path
+
+def transform_height_perspective(point, height, pen=True):
+    cx = target_width / 2
+    cy = target_height / 2
+    camera_pos = np.array([cx, cy, camera_height])
+    draw_pos = np.array([point[0], point[1], 0])
+    new_point = \
+        draw_pos  + (camera_pos - draw_pos) / camera_height * height
+
+    if pen:
+        # Increase y
+        new_point[1] += 0.2
+    else:
+        # Increase y
+        new_point[1] += 0.1
+
+    # Push x closer to middle
+    new_point[0] = cx + (new_point[0] - cx) * 1.15
+
+
+    return (new_point[0], new_point[1])
 
 # returns x, y (1920, 1080) or None if can't find
 def find_marker_for_id(frame, marker_id):
@@ -201,11 +223,6 @@ def main(cam_idx):
     styled_history = History()
     pen_history = History()
 
-    drawing = Drawing()
-    drawing.set_style(1)
-    drawing.set_client(client_width, client_height)
-    drawing.set_target(target_width, target_height, border)
-
     path_buffer = Queue()
     device_lock = Lock()
 
@@ -216,8 +233,9 @@ def main(cam_idx):
         )
 
     # initialize plotter
+    p = None
     if not DRY_RUN:
-        p = PlotterAxi(w=client_width-0.5, h=client_height-0.5, border=border)
+        p = PlotterAxi(w=target_width, h=target_height-0.5, border=border)
 
         def disable_device():
             with device_lock:
@@ -249,6 +267,11 @@ def main(cam_idx):
                     p.path(path)
 
         start_thread(send_commands)
+
+    drawing = Drawing(p, pen_history)
+    drawing.set_style(2)
+    drawing.set_client(client_width, client_height)
+    drawing.set_target(target_width, target_height, border)
 
 
     class RecordTemplateAction:
@@ -465,7 +488,7 @@ def main(cam_idx):
     start_thread(websocket_server)
 
     def draw_debug_info(frame, undistorted_frame, sat_img,
-                        raw_point, draw_point, pen_point):
+                        raw_point, tall_draw_point, draw_point, pen_point):
         frame_canvas = canvas[:frame_height, frame_width:(frame_width*2), :]
         frame_canvas[:,:,:] = frame[::-1, ::-1, :]
 
@@ -484,6 +507,14 @@ def main(cam_idx):
         def paper_to_pixel(p):
             return (int(p[0] / target_width * client_width + client_x),
                     int(p[1] / target_height * client_height + client_y))
+
+        def draw_paper_point(canvas, paper_point, color):
+            px, py = paper_to_pixel(paper_point)
+            cv2.circle(canvas, (px, py), 20,
+                       color, -1)
+            cv2.putText(canvas, "{:.2f}, {:.2f}".format(*paper_point),
+                        (px - 80, py+50), cv2.FONT_HERSHEY_SIMPLEX, 1.5,
+                        color, 5)
 
         if raw_point is not None and draw_point is not None:
             def raw_to_pixel(p):
@@ -514,21 +545,14 @@ def main(cam_idx):
                 draw_color,
                 -1)
 
+            draw_paper_point(fixed_canvas, tall_draw_point, (0, 255, 255))
+            draw_paper_point(fixed_canvas, draw_point, (0, 255, 0))
+
         if pen_point is not None:
-            px, py = paper_to_pixel(pen_point)
-            cv2.circle(fixed_canvas, (px, py), 20,
-                       (0, 255, 255), -1)
-            cv2.putText(fixed_canvas, "{:.2f}, {:.2f}".format(*pen_point),
-                        (px - 80, py+50), cv2.FONT_HERSHEY_SIMPLEX, 1.5,
-                        (0, 255, 255), 5)
+            draw_paper_point(fixed_canvas, pen_point, (0, 255, 255))
 
             bot_point = project_draw_to_bot(pen_point)
-            px, py = paper_to_pixel(bot_point)
-            cv2.circle(fixed_canvas, (px, py), 20,
-                       (0, 255, 0), -1)
-            cv2.putText(fixed_canvas, "{:.2f}, {:.2f}".format(*bot_point),
-                        (px - 80, py-50), cv2.FONT_HERSHEY_SIMPLEX, 1.5,
-                        (0, 255, 0), 5)
+            draw_paper_point(fixed_canvas, bot_point, (0, 255, 0))
 
         canvas_resize = cv2.resize(
             canvas, (1920, int(canvas.shape[0] * 1920 / canvas.shape[1])))
@@ -576,48 +600,42 @@ def main(cam_idx):
         pen_point = None
         if axi_raw_point is not None:
             axi_draw_point = drawing.compute_draw_coordinates(*axi_raw_point)
-            cx = target_width / 2
-            cy = target_height / 2
-            camera_pos = np.array([cx, cy, camera_height])
-            draw_pos = np.array([axi_draw_point[0], axi_draw_point[1], 0])
-            pen_point = \
-                draw_pos  + (camera_pos - draw_pos) / camera_height * pen_height
-
-            # # Push x closer to middle
-            pen_point[0] = cx + (pen_point[0] - cx) * 1.15
-
-            # # Increase y
-            pen_point[1] += 0.2
-
-            pen_point = (pen_point[0], pen_point[1])
+            pen_point = transform_height_perspective(axi_draw_point, pen_height)
             pen_history.shift(pen_point)
 
         raw_point, _, _ = markers[COLOR_RED]
+        tall_draw_point = None
         draw_point = None
         styled_point = None
 
         if raw_point is not None:
-            px, py = raw_point
-            if px >= 0 and px <= client_width and \
-               py >= 0 and py <= client_height:
-                draw_point = drawing.compute_draw_coordinates(*raw_point)
-                styled_point = drawing.apply_style(draw_point)
+            tall_draw_point = drawing.compute_draw_coordinates(*raw_point)
+            draw_point = transform_height_perspective(tall_draw_point, marker_height, pen=False)
+            if 0 <= draw_point[0] and draw_point[0] < target_width and \
+               0 <= draw_point[1] and draw_point[1] < target_height:
+
+                last_draw_point = draw_history.last()
+                styled_point = drawing.apply_style(
+                    draw_point,
+                    (draw_point[0] - last_draw_point[0],
+                     draw_point[1] - last_draw_point[1]) \
+                    if last_draw_point is not None else draw_point)
 
                 for a in actions.values():
                     a.on_draw(draw_point)
 
-                # if len(draw_history.pts) < 4:
-                #     path_buffer.put(styled_point)
-                #     pass
-                # else:
-                #     interped = CatmullRomSpline(
-                #         *(styled_history.pts[-3:] + [styled_point]),
-                #         nPoints=4)
-                #     if np.any(np.isnan(interped)):
-                #         path_buffer.put(styled_history.pts[-1])
-                #     else:
-                #         for pt in interped:
-                #             path_buffer.put(pt)
+                if len(draw_history.pts) < 4:
+                    path_buffer.put(styled_point)
+                    pass
+                else:
+                    interped = CatmullRomSpline(
+                        *(styled_history.pts[-3:] + [styled_point]),
+                        nPoints=3)
+                    if np.any(np.isnan(interped)):
+                        path_buffer.put(styled_history.pts[-1])
+                    else:
+                        for pt in interped:
+                            path_buffer.put(pt)
 
         start = now()
         draw_debug_info(
@@ -625,6 +643,7 @@ def main(cam_idx):
             undistorted_frame,
             sat_img,
             raw_point,
+            tall_draw_point,
             draw_point,
             pen_point)
         # print('Drawing debug info: {:.3f}'.format(now() - start))

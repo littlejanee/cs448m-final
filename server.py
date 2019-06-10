@@ -55,7 +55,7 @@ def recv(client, server, message):
             p.move(x, y, feed=10000)
         elif ty == 'end':
             p.up()
-        
+
 
 server.set_fn_message_received(recv)
 server.run_forever()
