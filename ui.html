@@ -138,6 +138,43 @@
        }
      }
 
+     class RotationSlider extends React.Component {
+       state = {value: 0}
+
+       onChange = (event) => {
+         this.setState({value: event.target.value});
+         send({'rotation': event.target.value})
+       }
+
+       render() {
+         return <div>
+           Rotation (degrees):&nbsp;
+           <input type="range" min="0" max="360" value={this.state.value} className="slider" onChange={this.onChange}>
+           </input>
+           &nbsp;{this.state.value}
+         </div>
+         //<input type="text" value={this.state.value}/>
+       }
+     }
+
+     class ScaleSlider extends React.Component {
+       state = {value: 1}
+
+       onChange = (event) => {
+         this.setState({value: event.target.value});
+         send({'scale': event.target.value})
+       }
+
+       render() {
+         return <div>
+           Scale:&nbsp;
+           <input type="range" min="0" max="2" step=".1" value={this.state.value} className="slider" onChange={this.onChange}>
+           </input>
+           &nbsp;{this.state.value}
+         </div>
+       }
+     }
+
      class App extends React.Component {
        render() {
          return <div>
@@ -147,6 +184,11 @@
              <RecordTemplate />
              <ApplyTemplate />
              <ApplyTemplatePath />
+           </div>
+           <div>
+             <h2>Settings</h2>
+             <RotationSlider />
+             <ScaleSlider />
            </div>
            <div>
              <h2>Motors</h2>

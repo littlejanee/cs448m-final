@@ -281,6 +281,8 @@ def main(cam_idx):
         def __init__(self):
             self.path = []
             self.recording = False
+            self.rotation = 0
+            self.scale = 1
 
         def apply_template(self, p, translate, rotate, scale):
             transformed_path = drawing.apply_transform(
@@ -310,8 +312,8 @@ def main(cam_idx):
 
         def trigger(self):
             translate = (0, 0)#(p.x, p.y)
-            rotate = math.pi/3#0
-            scale = .8
+            rotate = actions['apply_template'].rotation#math.pi/3#0
+            scale = actions['apply_template'].scale#.8
             self.apply_template(p, translate, rotate, scale)
 
         def on_draw(self, point):
@@ -321,6 +323,8 @@ def main(cam_idx):
         def __init__(self):
             self.path = []
             self.recording = False
+            self.rotation = 0
+            self.scale = 1
 
         def apply_template(self, p, translate, rotate, scale):
             transformed_path = drawing.apply_transform(
@@ -367,8 +371,8 @@ def main(cam_idx):
             else:
                 print('Finish application path')
                 translate = (0, 0)#(p.x, p.y)
-                rotate = math.pi/3#0
-                scale = .8
+                rotate = actions['apply_template_path'].rotation#math.pi/3#0
+                scale = actions['apply_template_path'].scale#.8
                 self.apply_template(p, translate, rotate, scale)
 
         def on_draw(self, point):
@@ -437,9 +441,22 @@ def main(cam_idx):
 
     def recv_websocket(client, server, message):
         data = json.loads(message)
-        server.send_message(
-            client,
-            json.dumps(actions[data['type']].trigger()))
+        if 'rotation' in data:
+            rotation = int(data['rotation'])
+            print(rotation)
+            rotation = math.radians(rotation)
+            # print(rotation)
+            actions['apply_template'].rotation = rotation
+            actions['apply_template_path'].rotation = rotation
+        if 'scale' in data:
+            scale = data['scale']
+            print(scale)
+            actions['apply_template'].scale = scale
+            actions['apply_template_path'].scale = scale
+        if 'type' in data:
+            server.send_message(
+                client,
+                json.dumps(actions[data['type']].trigger()))
 
     def websocket_server():
         server.set_fn_message_received(recv_websocket)
